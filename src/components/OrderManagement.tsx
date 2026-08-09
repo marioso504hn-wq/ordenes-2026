@@ -130,19 +130,87 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
   const [formCarpetaURL, setFormCarpetaURL] = useState('');
   const [formFechaEntrega, setFormFechaEntrega] = useState(''); // YYYY-MM-DDTHH:mm
 
-  // Interactive Sub-Items / Sub-OT List Manager
-  const [formItemList, setFormItemList] = useState<OrderItem[]>([]);
-  const [editingItemIdx, setEditingItemIdx] = useState<number | null>(null);
+  // OTE Management States (OTE 1, OTE 2, OTE 3...)
+  const [oteNumbers, setOteNumbers] = useState<number[]>([1]);
+  const [activeOteTab, setActiveOteTab] = useState<number>(1);
+  const [oteDeliveryDates, setOteDeliveryDates] = useState<Record<number, string>>({ 1: '' });
+  const [oteItems, setOteItems] = useState<Record<number, Array<{ id: string; itemLabel: string; reference: string; pieceType: string }>>>({
+    1: [],
+  });
+  const [oteBulkInputs, setOteBulkInputs] = useState<Record<number, string>>({ 1: '' });
 
-  const [subRefInput, setSubRefInput] = useState('');
-  const [subTypeInput, setSubTypeInput] = useState('');
-  const [subOtNumInput, setSubOtNumInput] = useState<number>(1);
-  const [subFechaEnvioInput, setSubFechaEnvioInput] = useState('');
+  const handleAddOteTab = () => {
+    const nextOte = oteNumbers.length > 0 ? Math.max(...oteNumbers) + 1 : 1;
+    setOteNumbers((prev) => [...prev, nextOte]);
+    setOteDeliveryDates((prev) => ({ ...prev, [nextOte]: formFechaEntrega || '' }));
+    setOteItems((prev) => ({ ...prev, [nextOte]: [] }));
+    setActiveOteTab(nextOte);
+    showToast(`✓ OTE ${nextOte} agregada a esta misma orden`);
+  };
 
-  // Bulk fallback textareas
-  const [formBulkReferencias, setFormBulkReferencias] = useState('');
-  const [formBulkTipos, setFormBulkTipos] = useState('');
-  const [formBulkOTE, setFormBulkOTE] = useState<number>(1);
+  const handleRemoveOteTab = (oteNum: number) => {
+    if (oteNumbers.length <= 1) return;
+    const updated = oteNumbers.filter((n) => n !== oteNum);
+    setOteNumbers(updated);
+    if (activeOteTab === oteNum) {
+      setActiveOteTab(updated[0]);
+    }
+  };
+
+  const handleAddItemRow = (oteNum: number) => {
+    const currentList = oteItems[oteNum] || [];
+    const nextIdx = currentList.length + 1;
+    const newItem = {
+      id: id(),
+      itemLabel: `Ítem ${nextIdx}`,
+      reference: '',
+      pieceType: formTipoContrapieza,
+    };
+    setOteItems((prev) => ({
+      ...prev,
+      [oteNum]: [...currentList, newItem],
+    }));
+  };
+
+  const handleUpdateItemRow = (oteNum: number, itemIdx: number, field: 'itemLabel' | 'reference' | 'pieceType', value: string) => {
+    setOteItems((prev) => {
+      const list = [...(prev[oteNum] || [])];
+      if (list[itemIdx]) {
+        list[itemIdx] = { ...list[itemIdx], [field]: value };
+      }
+      return { ...prev, [oteNum]: list };
+    });
+  };
+
+  const handleRemoveItemRow = (oteNum: number, itemIdx: number) => {
+    setOteItems((prev) => {
+      const list = (prev[oteNum] || []).filter((_, idx) => idx !== itemIdx);
+      return { ...prev, [oteNum]: list };
+    });
+  };
+
+  const handleParseBulkItemsForOte = (oteNum: number) => {
+    const text = (oteBulkInputs[oteNum] || '').trim();
+    if (!text) return;
+    const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) return;
+
+    const currentList = oteItems[oteNum] || [];
+    const newRows = lines.map((refStr, idx) => ({
+      id: id(),
+      itemLabel: `Ítem ${currentList.length + idx + 1}`,
+      reference: refStr,
+      pieceType: formTipoContrapieza,
+    }));
+
+    setOteItems((prev) => ({
+      ...prev,
+      [oteNum]: [...currentList, ...newRows],
+    }));
+
+    setOteBulkInputs((prev) => ({ ...prev, [oteNum]: '' }));
+    showToast(`✓ ${lines.length} referencias agregadas a la OTE ${oteNum}`);
+  };
 
   // Print Modal
   const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
@@ -351,62 +419,6 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
     return isCerrada && matchUser;
   });
 
-  // Item/Sub-OT Manager handlers inside Order Form
-  const handleAddOrUpdateFormItem = () => {
-    if (!subRefInput.trim() && !subTypeInput.trim()) {
-      alert('Por favor ingrese al menos una Referencia o Tipo de Pieza.');
-      return;
-    }
-
-    const itemObj: OrderItem = {
-      id: editingItemIdx !== null ? formItemList[editingItemIdx]?.id || id() : id(),
-      reference: subRefInput.trim() || 'REF-001',
-      pieceType: subTypeInput.trim() || formTipoContrapieza,
-      itemName: subTypeInput.trim() || formTipoContrapieza,
-      quantity: 1,
-      ots: [
-        {
-          otNum: subOtNumInput || 1,
-          fechaEnvio: subFechaEnvioInput || formFechaEntrega || new Date().toISOString(),
-          status: 'activa',
-        },
-      ],
-    };
-
-    if (editingItemIdx !== null) {
-      const updated = [...formItemList];
-      updated[editingItemIdx] = itemObj;
-      setFormItemList(updated);
-      setEditingItemIdx(null);
-    } else {
-      setFormItemList([...formItemList, itemObj]);
-    }
-
-    setSubRefInput('');
-    setSubTypeInput('');
-    setSubOtNumInput(1);
-    setSubFechaEnvioInput('');
-  };
-
-  const handleRemoveFormItem = (index: number) => {
-    setFormItemList(formItemList.filter((_, idx) => idx !== index));
-    if (editingItemIdx === index) {
-      setEditingItemIdx(null);
-      setSubRefInput('');
-      setSubTypeInput('');
-    }
-  };
-
-  const handleStartEditFormItem = (item: OrderItem, index: number) => {
-    setEditingItemIdx(index);
-    setSubRefInput(item.reference || '');
-    setSubTypeInput(item.pieceType || item.itemName || '');
-    if (item.ots && item.ots.length > 0) {
-      setSubOtNumInput(item.ots[0].otNum || 1);
-      setSubFechaEnvioInput(item.ots[0].fechaEnvio ? item.ots[0].fechaEnvio.slice(0, 16) : '');
-    }
-  };
-
   // Handle Form Submission
   const handleSaveOrderForm = (e: React.FormEvent) => {
     e.preventDefault();
@@ -415,67 +427,37 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
       return;
     }
 
-    const refs = formBulkReferencias.split('\n').map((l) => l.trim()).filter(Boolean);
-    const tipos = formBulkTipos.split('\n').map((l) => l.trim()).filter(Boolean);
+    // Collect all items across all OTE tabs
+    const finalOrderItems: OrderItem[] = [];
 
-    // Check for prior comments warning
-    const refsToCheck = [
-      ...formItemList.map((i) => i.reference).filter(Boolean),
-      ...refs,
-      formOtNum,
-    ];
+    oteNumbers.forEach((oteNum) => {
+      const itemsInOte = oteItems[oteNum] || [];
+      const oteFecha = oteDeliveryDates[oteNum] || formFechaEntrega || new Date().toISOString();
 
-    let foundPriorComments = false;
-    orders.forEach((o) => {
-      if (o.comentariosJson) {
-        try {
-          const coms: OrderComment[] = JSON.parse(o.comentariosJson);
-          coms.forEach((c) => {
-            if (c.referencia && refsToCheck.includes(c.referencia)) {
-              foundPriorComments = true;
-            }
-          });
-        } catch {
-          // ignore
-        }
-      }
-    });
+      itemsInOte.forEach((it, idx) => {
+        if (!it.reference.trim() && !it.itemLabel.trim()) return;
 
-    if (foundPriorComments) {
-      const proceed = confirm(
-        '⚠️ ATENCIÓN: Se encontraron comentarios o dudas registradas previamente para una de las referencias ingresadas. ¿Desea continuar con el registro?'
-      );
-      if (!proceed) return;
-    }
-
-    const calculatedDueDate = formFechaEntrega ? new Date(formFechaEntrega).getTime() : Date.now() + 3 * 86400000;
-    const maxBulk = Math.max(refs.length, tipos.length);
-    const bulkItems: OrderItem[] = [];
-
-    if (maxBulk > 0) {
-      for (let i = 0; i < maxBulk; i++) {
-        bulkItems.push({
-          id: `item-bulk-${i + 1}-${Date.now()}`,
-          reference: refs[i] || `REF-${i + 1}`,
-          pieceType: tipos[i] || formTipoContrapieza,
-          itemName: tipos[i] || formTipoContrapieza,
+        finalOrderItems.push({
+          id: it.id || id(),
+          reference: it.reference.trim() || `REF-${idx + 1}`,
+          itemName: it.itemLabel.trim() || `Ítem ${idx + 1}`,
+          pieceType: it.pieceType || formTipoContrapieza,
           quantity: 1,
           ots: [
             {
-              otNum: formBulkOTE || 1,
-              fechaEnvio: formFechaEntrega || new Date(calculatedDueDate).toISOString(),
+              otNum: oteNum,
+              fechaEnvio: oteFecha,
               status: 'activa',
             },
           ],
         });
-      }
-    }
+      });
+    });
 
-    const parsedItems: OrderItem[] = [...formItemList, ...bulkItems];
-
-    const finalItemsJson = parsedItems.length > 0 ? JSON.stringify(parsedItems) : '';
-    const firstItemName = parsedItems.length > 0 ? parsedItems[0].itemName || 'Pieza Mecanizada' : 'Pieza Mecanizada';
-    const firstRef = parsedItems.length > 0 ? parsedItems[0].reference : 'REF-GENERAL';
+    const calculatedDueDate = formFechaEntrega ? new Date(formFechaEntrega).getTime() : Date.now() + 3 * 86400000;
+    const finalItemsJson = finalOrderItems.length > 0 ? JSON.stringify(finalOrderItems) : '';
+    const firstItemName = finalOrderItems.length > 0 ? finalOrderItems[0].itemName || 'Pieza Mecanizada' : 'Pieza Mecanizada';
+    const firstRef = finalOrderItems.length > 0 ? finalOrderItems[0].reference : 'REF-GENERAL';
 
     if (editingOrderId) {
       db.transact(
@@ -491,7 +473,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
           fechaEntrega: formFechaEntrega || new Date(calculatedDueDate).toISOString(),
           itemName: firstItemName,
           itemReference: firstRef,
-          quantity: parsedItems.length || 1,
+          quantity: finalOrderItems.length || 1,
           updatedAt: Date.now(),
           itemsJson: finalItemsJson,
         })
@@ -520,7 +502,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
             existingItems = [];
           }
         }
-        const mergedItems = [...existingItems, ...parsedItems];
+        const mergedItems = [...existingItems, ...finalOrderItems];
         db.transact(
           tx.orders[existingOrder.id].update({
             itemsJson: JSON.stringify(mergedItems),
@@ -548,7 +530,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
             fechaEntrega: formFechaEntrega || new Date(calculatedDueDate).toISOString(),
             itemName: firstItemName,
             itemReference: firstRef,
-            quantity: parsedItems.length || 1,
+            quantity: finalOrderItems.length || 1,
             status: 'activa',
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -570,13 +552,11 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
     setFormIngeniero('');
     setFormCarpetaURL('');
     setFormFechaEntrega('');
-    setFormBulkReferencias('');
-    setFormBulkTipos('');
-    setFormBulkOTE(1);
-    setFormItemList([]);
-    setEditingItemIdx(null);
-    setSubRefInput('');
-    setSubTypeInput('');
+    setOteNumbers([1]);
+    setActiveOteTab(1);
+    setOteDeliveryDates({ 1: '' });
+    setOteItems({ 1: [] });
+    setOteBulkInputs({ 1: '' });
   };
 
   const handleEditOrderClick = (order: Order) => {
@@ -601,10 +581,43 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
         items = [];
       }
     }
-    setFormItemList(items);
-    setEditingItemIdx(null);
-    setSubRefInput('');
-    setSubTypeInput('');
+
+    const newOteNumbers = new Set<number>();
+    const newOteDates: Record<number, string> = {};
+    const newOteItems: Record<number, Array<{ id: string; itemLabel: string; reference: string; pieceType: string }>> = {};
+
+    if (items.length > 0) {
+      items.forEach((item, idx) => {
+        const oteNum = (item.ots && item.ots.length > 0 && item.ots[0].otNum) ? item.ots[0].otNum : 1;
+        const oteDate = (item.ots && item.ots.length > 0 && item.ots[0].fechaEnvio)
+          ? new Date(item.ots[0].fechaEnvio).toISOString().slice(0, 16)
+          : (order.fechaEntrega ? order.fechaEntrega.slice(0, 16) : '');
+
+        newOteNumbers.add(oteNum);
+        if (!newOteDates[oteNum]) newOteDates[oteNum] = oteDate;
+
+        if (!newOteItems[oteNum]) newOteItems[oteNum] = [];
+        newOteItems[oteNum].push({
+          id: item.id || id(),
+          itemLabel: item.itemName || `Ítem ${idx + 1}`,
+          reference: item.reference || '',
+          pieceType: item.pieceType || order.counterpieceType || 'Pull',
+        });
+      });
+    }
+
+    const sortedOteNums = Array.from(newOteNumbers).sort((a, b) => a - b);
+    if (sortedOteNums.length === 0) {
+      sortedOteNums.push(1);
+      newOteDates[1] = order.fechaEntrega ? order.fechaEntrega.slice(0, 16) : '';
+      newOteItems[1] = [];
+    }
+
+    setOteNumbers(sortedOteNums);
+    setActiveOteTab(sortedOteNums[0]);
+    setOteDeliveryDates(newOteDates);
+    setOteItems(newOteItems);
+
     setActiveSubTab('mis_ordenes');
     setIsSidebarOpen(true);
   };
@@ -1025,7 +1038,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
                             <table className="w-full text-left text-xs border-collapse">
                               <thead>
                                 <tr className="bg-slate-50/60 text-slate-400 border-b border-slate-100 font-bold text-[10px] uppercase">
-                                  <th className="py-1.5 px-3 w-8 text-center">N°</th>
+                                  <th className="py-1.5 px-3 text-center">Ítem / N°</th>
                                   <th className="py-1.5 px-3">Referencia</th>
                                   <th className="py-1.5 px-3">Tipo / Especificación</th>
                                   <th className="py-1.5 px-3">Fecha Envío</th>
@@ -1035,6 +1048,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
                               <tbody className="divide-y divide-slate-100">
                                 {group.items.map(({ item: it, originalIdx }) => {
                                   const isClosed = it.notes === 'completado' || (it as any).isClosed;
+                                  const itemLabelToDisplay = it.itemName || `Ítem ${originalIdx + 1}`;
 
                                   return (
                                     <tr
@@ -1044,15 +1058,17 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
                                         isClosed ? 'bg-rose-50/70 text-rose-800 line-through' : 'hover:bg-slate-50 text-slate-800'
                                       }`}
                                     >
-                                      <td className="py-2 px-3 text-center font-mono text-slate-400 font-semibold">
-                                        {originalIdx + 1}
+                                      <td className="py-2 px-3 text-center">
+                                        <span className="inline-block px-2 py-0.5 bg-amber-100/90 text-amber-950 font-black text-xs rounded-md border border-amber-300/80 font-mono">
+                                          {itemLabelToDisplay}
+                                        </span>
                                       </td>
                                       <td className="py-2 px-3 font-mono font-bold text-indigo-900 flex items-center gap-1.5">
                                         <span>{it.reference}</span>
                                         <span className="text-sm">{getFlagEmoji(order.destinoFabricacion)}</span>
                                       </td>
-                                      <td className="py-2 px-3 font-medium">
-                                        {it.pieceType || it.itemName || 'Pieza'}
+                                      <td className="py-2 px-3 font-medium text-slate-800">
+                                        {it.pieceType || 'Pieza'}
                                       </td>
                                       <td className="py-2 px-3 font-mono text-[11px] text-slate-600">
                                         {it.ots && it.ots.length > 0 && it.ots[0].fechaEnvio
@@ -1522,161 +1538,203 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
                       />
                     </div>
 
-                    {/* Interactive Sub-Items & OT Editor */}
-                    <div className="pt-3 border-t border-slate-200 space-y-3 bg-indigo-50/50 p-3 rounded-2xl border border-indigo-100">
-                      <div className="flex items-center justify-between">
+                    {/* OTE Tabs & Items Management */}
+                    <div className="pt-3 border-t border-slate-200 space-y-3 bg-indigo-50/40 p-3 rounded-2xl border border-indigo-100">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
                         <span className="text-[11px] font-black text-indigo-900 uppercase tracking-tight flex items-center gap-1.5">
                           <Layers className="w-3.5 h-3.5 text-indigo-600" />
-                          <span>Componentes & OTs Asignadas ({formItemList.length})</span>
+                          <span>Gestión de OTEs y Referencias</span>
                         </span>
-                        {editingItemIdx !== null && (
-                          <span className="text-[10px] bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded">
-                            Editando Ítem #{editingItemIdx + 1}
-                          </span>
-                        )}
+
+                        <button
+                          type="button"
+                          onClick={handleAddOteTab}
+                          className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-lg text-[11px] transition-colors cursor-pointer shadow-2xs flex items-center gap-1"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>Agregar OTE {oteNumbers.length > 0 ? Math.max(...oteNumbers) + 1 : 1}</span>
+                        </button>
                       </div>
 
-                      {/* Form inputs for adding an item */}
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Referencia</label>
-                          <input
-                            type="text"
-                            placeholder="Ej: REF-001"
-                            value={subRefInput}
-                            onChange={(e) => setSubRefInput(e.target.value)}
-                            className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-900"
-                          />
-                        </div>
+                      {/* OTE Selector Tabs */}
+                      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-indigo-100">
+                        {oteNumbers.map((oteNum) => {
+                          const isActive = activeOteTab === oteNum;
+                          const count = (oteItems[oteNum] || []).length;
+                          return (
+                            <div key={oteNum} className="flex items-center">
+                              <button
+                                type="button"
+                                onClick={() => setActiveOteTab(oteNum)}
+                                className={`px-3 py-1.5 rounded-xl font-mono text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                                  isActive
+                                    ? 'bg-indigo-600 text-white shadow-xs'
+                                    : 'bg-white text-indigo-900 hover:bg-indigo-100 border border-indigo-200'
+                                }`}
+                              >
+                                <span>📦 OTE {oteNum}</span>
+                                <span
+                                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                                    isActive ? 'bg-indigo-800 text-white' : 'bg-indigo-100 text-indigo-800'
+                                  }`}
+                                >
+                                  {count}
+                                </span>
+                              </button>
 
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Tipo de Pieza</label>
-                          <select
-                            value={subTypeInput || formTipoContrapieza}
-                            onChange={(e) => setSubTypeInput(e.target.value)}
-                            className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-900"
-                          >
-                            {pieceTypes.map((t) => (
-                              <option key={t} value={t}>
-                                {t}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Sub-OT #</label>
-                          <input
-                            type="number"
-                            min={1}
-                            value={subOtNumInput}
-                            onChange={(e) => setSubOtNumInput(parseInt(e.target.value) || 1)}
-                            className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-900"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Fecha Envío OT</label>
-                          <input
-                            type="datetime-local"
-                            value={subFechaEnvioInput}
-                            onChange={(e) => setSubFechaEnvioInput(e.target.value)}
-                            className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900"
-                          />
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={handleAddOrUpdateFormItem}
-                        className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>{editingItemIdx !== null ? '✓ Actualizar Ítem / OT' : '➕ Añadir Ítem / OT a la Orden'}</span>
-                      </button>
-
-                      {/* List of current items */}
-                      {formItemList.length > 0 && (
-                        <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1 pt-1">
-                          {formItemList.map((it, idx) => (
-                            <div
-                              key={idx}
-                              className={`p-2 rounded-xl border text-xs flex items-center justify-between gap-2 transition-all ${
-                                editingItemIdx === idx
-                                  ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-400/30'
-                                  : 'bg-white border-slate-200'
-                              }`}
-                            >
-                              <div className="min-w-0">
-                                <div className="font-mono font-bold text-indigo-900 truncate">
-                                  Ref: {it.reference} — <span className="text-slate-600 font-sans font-normal">{it.pieceType || it.itemName}</span>
-                                </div>
-                                <div className="text-[10px] text-slate-500">
-                                  OT #{it.ots && it.ots[0] ? it.ots[0].otNum : 1}
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-1 shrink-0">
+                              {oteNumbers.length > 1 && (
                                 <button
                                   type="button"
-                                  onClick={() => handleStartEditFormItem(it, idx)}
-                                  className="p-1 text-indigo-600 hover:bg-indigo-50 rounded cursor-pointer"
-                                  title="Editar"
+                                  onClick={() => handleRemoveOteTab(oteNum)}
+                                  className="ml-0.5 text-slate-400 hover:text-rose-600 p-0.5 rounded cursor-pointer"
+                                  title={`Eliminar OTE ${oteNum}`}
                                 >
-                                  <Edit2 className="w-3.5 h-3.5" />
+                                  ×
                                 </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Active OTE Content */}
+                      {activeOteTab && (
+                        <div className="space-y-3 pt-1">
+                          {/* OTE Delivery Date */}
+                          <div className="bg-white p-2.5 rounded-xl border border-indigo-100 text-xs space-y-1">
+                            <label className="block text-[10px] font-bold text-slate-600 uppercase">
+                              Fecha de Envío / Entrega para OTE {activeOteTab}
+                            </label>
+                            <input
+                              type="datetime-local"
+                              value={oteDeliveryDates[activeOteTab] || ''}
+                              onChange={(e) =>
+                                setOteDeliveryDates((prev) => ({ ...prev, [activeOteTab]: e.target.value }))
+                              }
+                              className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 font-medium focus:outline-none focus:bg-white"
+                            />
+                          </div>
+
+                          {/* List of Items for Active OTE */}
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-slate-700">
+                                Lista de Ítems / Referencias (OTE {activeOteTab})
+                              </span>
+                              <span className="text-[10px] text-slate-400">
+                                * Escriba directamente sobre el Ítem para cambiarlo
+                              </span>
+                            </div>
+
+                            {/* Table / List */}
+                            {(oteItems[activeOteTab] || []).length === 0 ? (
+                              <div className="p-3 bg-white rounded-xl border border-dashed border-slate-200 text-center text-xs text-slate-400">
+                                No hay ítems en la OTE {activeOteTab}. Haga clic abajo en <strong>+ Añadir Fila de Ítem</strong>.
+                              </div>
+                            ) : (
+                              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                                {(oteItems[activeOteTab] || []).map((row, idx) => (
+                                  <div
+                                    key={row.id || idx}
+                                    className="p-2 bg-white rounded-xl border border-slate-200 text-xs grid grid-cols-12 gap-2 items-center"
+                                  >
+                                    {/* Editable Item Label (e.g., Ítem 1, Ítem 3, Ítem 5...) */}
+                                    <div className="col-span-3">
+                                      <input
+                                        type="text"
+                                        title="Haga clic para cambiar el número/nombre de ítem"
+                                        placeholder="Ej: Ítem 3"
+                                        value={row.itemLabel}
+                                        onChange={(e) =>
+                                          handleUpdateItemRow(activeOteTab, idx, 'itemLabel', e.target.value)
+                                        }
+                                        className="w-full px-2 py-1 bg-amber-50/70 hover:bg-amber-100/80 focus:bg-white border border-amber-300 font-extrabold text-indigo-900 rounded-lg text-xs"
+                                      />
+                                    </div>
+
+                                    {/* Reference */}
+                                    <div className="col-span-4">
+                                      <input
+                                        type="text"
+                                        placeholder="Referencia (Ej: REF-001)"
+                                        value={row.reference}
+                                        onChange={(e) =>
+                                          handleUpdateItemRow(activeOteTab, idx, 'reference', e.target.value)
+                                        }
+                                        className="w-full px-2 py-1 bg-slate-50 focus:bg-white border border-slate-200 font-mono font-bold text-slate-900 rounded-lg text-xs"
+                                      />
+                                    </div>
+
+                                    {/* Piece Type */}
+                                    <div className="col-span-4">
+                                      <select
+                                        value={row.pieceType || formTipoContrapieza}
+                                        onChange={(e) =>
+                                          handleUpdateItemRow(activeOteTab, idx, 'pieceType', e.target.value)
+                                        }
+                                        className="w-full px-1.5 py-1 bg-slate-50 focus:bg-white border border-slate-200 text-slate-800 font-medium rounded-lg text-[11px]"
+                                      >
+                                        {pieceTypes.map((t) => (
+                                          <option key={t} value={t}>
+                                            {t}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+
+                                    {/* Remove button */}
+                                    <div className="col-span-1 text-right">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveItemRow(activeOteTab, idx)}
+                                        className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-rose-50 cursor-pointer"
+                                        title="Eliminar este ítem"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Add Single Item Button */}
+                            <button
+                              type="button"
+                              onClick={() => handleAddItemRow(activeOteTab)}
+                              className="w-full py-1.5 bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-700 font-extrabold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>+ Añadir Fila de Ítem a OTE {activeOteTab}</span>
+                            </button>
+
+                            {/* Bulk Paste per OTE */}
+                            <div className="pt-2 border-t border-indigo-100/60 space-y-1">
+                              <label className="block text-[10px] font-bold text-slate-500">
+                                Cargar Varias Referencias para OTE {activeOteTab} (Una por línea)
+                              </label>
+                              <div className="flex items-center gap-1.5">
+                                <textarea
+                                  rows={2}
+                                  placeholder={`REF-101\nREF-102`}
+                                  value={oteBulkInputs[activeOteTab] || ''}
+                                  onChange={(e) =>
+                                    setOteBulkInputs((prev) => ({ ...prev, [activeOteTab]: e.target.value }))
+                                  }
+                                  className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none"
+                                />
                                 <button
                                   type="button"
-                                  onClick={() => handleRemoveFormItem(idx)}
-                                  className="p-1 text-rose-600 hover:bg-rose-50 rounded cursor-pointer"
-                                  title="Eliminar"
+                                  onClick={() => handleParseBulkItemsForOte(activeOteTab)}
+                                  className="px-3 py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs shrink-0 cursor-pointer"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                  Cargar
                                 </button>
                               </div>
                             </div>
-                          ))}
+                          </div>
                         </div>
                       )}
-                    </div>
-
-                    <div className="pt-2 border-t border-slate-100 space-y-2">
-                      <span className="text-[11px] font-extrabold text-indigo-700 uppercase tracking-wider block">
-                        Carga Masiva por Texto (Opcional)
-                      </span>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Referencias (Una por línea)</label>
-                        <textarea
-                          rows={3}
-                          placeholder={`REF-01\nREF-02`}
-                          value={formBulkReferencias}
-                          onChange={(e) => setFormBulkReferencias(e.target.value)}
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Especificación / Tipo (Una por línea)</label>
-                        <textarea
-                          rows={2}
-                          placeholder={`Especificación 1\nEspecificación 2`}
-                          value={formBulkTipos}
-                          onChange={(e) => setFormBulkTipos(e.target.value)}
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Número OT</label>
-                        <input
-                          type="number"
-                          min={1}
-                          value={formBulkOTE}
-                          onChange={(e) => setFormBulkOTE(parseInt(e.target.value) || 1)}
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900"
-                        />
-                      </div>
                     </div>
 
                     <button
