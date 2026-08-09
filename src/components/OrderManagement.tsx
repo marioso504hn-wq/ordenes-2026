@@ -35,7 +35,22 @@ import {
   ArrowRight,
   MapPin,
   Sparkles,
+  TrendingUp,
+  BarChart2,
+  PieChart as PieIcon,
 } from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from 'recharts';
 import {
   Order,
   OrderStatus,
@@ -55,17 +70,37 @@ interface OrderManagementProps {
   currentUser?: string;
 }
 
+const CHART_COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#64748b'];
+
 export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, customers, currentUser }) => {
   // Navigation sub-tabs within Order Management
   const [activeSubTab, setActiveSubTab] = useState<
-    'activas' | 'mis_ordenes' | 'buscador' | 'finalizadas' | 'comentarios'
+    'activas' | 'mis_ordenes' | 'buscador' | 'finalizadas' | 'comentarios' | 'kpis'
   >('activas');
 
   // Master Client Filter ('all' or specific client name)
   const [selectedClient, setSelectedClient] = useState<string>('all');
-  const [allClients, setAllClients] = useState<string[]>(DEFAULT_CUSTOMERS);
+  const [allClients, setAllClients] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('emdep_clients_list_v2');
+      return saved ? JSON.parse(saved) : DEFAULT_CUSTOMERS;
+    } catch {
+      return DEFAULT_CUSTOMERS;
+    }
+  });
   const [newClientInput, setNewClientInput] = useState('');
+  const [editingClientIdx, setEditingClientIdx] = useState<number | null>(null);
+  const [editClientNameInput, setEditClientNameInput] = useState('');
   const [isAddingClientModal, setIsAddingClientModal] = useState(false);
+  const [isPrintingKpiModal, setIsPrintingKpiModal] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('emdep_clients_list_v2', JSON.stringify(allClients));
+    } catch {
+      // ignore
+    }
+  }, [allClients]);
 
   // User filter ("Ver órdenes de")
   const [selectedUserFilter, setSelectedUserFilter] = useState<string>('all');
@@ -122,6 +157,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
 
+  const [formCliente, setFormCliente] = useState<string>(allClients[0] || 'Lier 213');
   const [formOtNum, setFormOtNum] = useState('');
   const [formProyecto, setFormProyecto] = useState('');
   const [formIngeniero, setFormIngeniero] = useState('');
@@ -138,6 +174,27 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
     1: [],
   });
   const [oteBulkInputs, setOteBulkInputs] = useState<Record<number, string>>({ 1: '' });
+
+  // Calculate next sequential item index across ALL OTEs to avoid duplicate Item 1, Item 2...
+  const getNextItemNumber = (itemsMap: typeof oteItems) => {
+    let maxNum = 0;
+    let totalCount = 0;
+    Object.values(itemsMap).forEach((list) => {
+      if (Array.isArray(list)) {
+        list.forEach((it: { itemLabel: string }) => {
+          totalCount++;
+          const match = it.itemLabel.match(/(\d+)/);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (!isNaN(num) && num > maxNum) {
+              maxNum = num;
+            }
+          }
+        });
+      }
+    });
+    return Math.max(maxNum, totalCount) + 1;
+  };
 
   const handleAddOteTab = () => {
     const nextOte = oteNumbers.length > 0 ? Math.max(...oteNumbers) + 1 : 1;
@@ -159,10 +216,10 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
 
   const handleAddItemRow = (oteNum: number) => {
     const currentList = oteItems[oteNum] || [];
-    const nextIdx = currentList.length + 1;
+    const nextNum = getNextItemNumber(oteItems);
     const newItem = {
       id: id(),
-      itemLabel: `Ítem ${nextIdx}`,
+      itemLabel: `Ítem ${nextNum}`,
       reference: '',
       pieceType: formTipoContrapieza,
     };
@@ -196,9 +253,10 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
     if (lines.length === 0) return;
 
     const currentList = oteItems[oteNum] || [];
+    let startNum = getNextItemNumber(oteItems);
     const newRows = lines.map((refStr, idx) => ({
       id: id(),
-      itemLabel: `Ítem ${currentList.length + idx + 1}`,
+      itemLabel: `Ítem ${startNum + idx}`,
       reference: refStr,
       pieceType: formTipoContrapieza,
     }));
@@ -459,11 +517,13 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
     const firstItemName = finalOrderItems.length > 0 ? finalOrderItems[0].itemName || 'Pieza Mecanizada' : 'Pieza Mecanizada';
     const firstRef = finalOrderItems.length > 0 ? finalOrderItems[0].reference : 'REF-GENERAL';
 
+    const currentCustomerName = formCliente.trim() || 'Lier 213';
+
     if (editingOrderId) {
       db.transact(
         tx.orders[editingOrderId].update({
           otNumber: formOtNum.trim(),
-          customerName: selectedClient === 'all' ? 'Lier 213' : selectedClient,
+          customerName: currentCustomerName,
           project: formProyecto.trim() || 'General',
           engineerInCharge: formIngeniero.trim() || 'Sin asignar',
           destinoFabricacion: formDestino,
@@ -485,7 +545,6 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
       showToast('✓ Orden actualizada en InstantDB');
     } else {
       // Check if an existing active order with the same OT Number and Customer already exists
-      const currentCustomerName = selectedClient === 'all' ? 'Lier 213' : selectedClient;
       const existingOrder = orders.find(
         (o) =>
           o.status === 'activa' &&
@@ -552,6 +611,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
     setFormIngeniero('');
     setFormCarpetaURL('');
     setFormFechaEntrega('');
+    setFormCliente(allClients[0] || 'Lier 213');
     setOteNumbers([1]);
     setActiveOteTab(1);
     setOteDeliveryDates({ 1: '' });
@@ -561,6 +621,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
 
   const handleEditOrderClick = (order: Order) => {
     setEditingOrderId(order.id);
+    setFormCliente(order.customerName || allClients[0] || 'Lier 213');
     setFormOtNum(order.otNumber || '');
     setFormProyecto(order.project || '');
     setFormIngeniero(order.engineerInCharge || '');
@@ -1209,6 +1270,108 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
     );
   };
 
+  const getKpiAnalyticsData = () => {
+    const activeOrders = orders.filter((o) => o.status === 'activa');
+    let grandTotalItems = 0;
+    const projectSet = new Set<string>();
+
+    const clientMap: Record<
+      string,
+      {
+        clientName: string;
+        orderCount: number;
+        totalItems: number;
+        projects: Record<string, { project: string; itemCount: number; orderCount: number }>;
+        pieceTypes: Record<string, number>;
+      }
+    > = {};
+
+    const globalPieceTypeMap: Record<string, number> = {};
+
+    activeOrders.forEach((order) => {
+      const client = (order.customerName || 'Lier 213').trim();
+      const project = (order.project || 'General').trim();
+      if (project) projectSet.add(project);
+
+      let items: OrderItem[] = [];
+      if (order.itemsJson) {
+        try {
+          items = JSON.parse(order.itemsJson);
+        } catch {
+          items = [];
+        }
+      }
+      const itemCount = items.length > 0 ? items.length : (order.quantity || 1);
+      grandTotalItems += itemCount;
+
+      if (!clientMap[client]) {
+        clientMap[client] = {
+          clientName: client,
+          orderCount: 0,
+          totalItems: 0,
+          projects: {},
+          pieceTypes: {},
+        };
+      }
+
+      clientMap[client].orderCount += 1;
+      clientMap[client].totalItems += itemCount;
+
+      if (!clientMap[client].projects[project]) {
+        clientMap[client].projects[project] = {
+          project,
+          itemCount: 0,
+          orderCount: 0,
+        };
+      }
+      clientMap[client].projects[project].itemCount += itemCount;
+      clientMap[client].projects[project].orderCount += 1;
+
+      if (items.length > 0) {
+        items.forEach((it) => {
+          const pt = it.pieceType || order.counterpieceType || 'Pull';
+          clientMap[client].pieceTypes[pt] = (clientMap[client].pieceTypes[pt] || 0) + 1;
+          globalPieceTypeMap[pt] = (globalPieceTypeMap[pt] || 0) + 1;
+        });
+      } else {
+        const pt = order.counterpieceType || 'Pull';
+        clientMap[client].pieceTypes[pt] = (clientMap[client].pieceTypes[pt] || 0) + 1;
+        globalPieceTypeMap[pt] = (globalPieceTypeMap[pt] || 0) + 1;
+      }
+    });
+
+    const clientsList = Object.values(clientMap).sort((a, b) => b.totalItems - a.totalItems);
+
+    const chartDataByClient = clientsList.map((c) => ({
+      name: c.clientName,
+      'Ítems Total': c.totalItems,
+      'N° Órdenes': c.orderCount,
+    }));
+
+    const pieDataByClient = clientsList.map((c) => ({
+      name: c.clientName,
+      value: c.totalItems,
+    }));
+
+    const pieTypesChartData = Object.entries(globalPieceTypeMap).map(([type, count]) => ({
+      name: type,
+      value: count,
+    }));
+
+    return {
+      totalActiveOrders: activeOrders.length,
+      totalClients: clientsList.length,
+      totalProjectsCount: projectSet.size,
+      grandTotalItems,
+      clientsList,
+      chartDataByClient,
+      pieDataByClient,
+      pieTypesChartData,
+    };
+  };
+
+  const kpiData = getKpiAnalyticsData();
+
   return (
     <div className="space-y-6">
       {/* Top Navbar Tabs */}
@@ -1227,6 +1390,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
             { id: 'buscador', label: 'Buscador Inteligente' },
             { id: 'finalizadas', label: 'Historial Cerrado' },
             { id: 'comentarios', label: '💬 Comentarios' },
+            { id: 'kpis', label: '📊 KPIs & Estadísticas' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -1451,6 +1615,31 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
                   </div>
 
                   <form onSubmit={handleSaveOrderForm} className="space-y-3">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[11px] font-bold text-slate-600 uppercase">Cliente / Empresa *</label>
+                        <button
+                          type="button"
+                          onClick={() => setIsAddingClientModal(true)}
+                          className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <Settings className="w-3 h-3" />
+                          <span>Gestionar Clientes</span>
+                        </button>
+                      </div>
+                      <select
+                        value={formCliente}
+                        onChange={(e) => setFormCliente(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+                      >
+                        {allClients.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     <div>
                       <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Código / Número de Orden *</label>
                       <input
@@ -1995,13 +2184,229 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
         </div>
       )}
 
-      {/* Modal to Manage Clients (Add and Remove Clients) */}
+      {/* KPI Dashboard Sub-tab */}
+      {activeSubTab === 'kpis' && (
+        <div className="space-y-6">
+          {/* KPI Header */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+            <div>
+              <h2 className="text-lg font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                <BarChart2 className="w-5 h-5 text-indigo-600" />
+                <span>Indicadores Clave de Desempeño (KPIs) por Cliente y Proyecto</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Resumen analítico con gráficas de clientes, proyectos y volumen de ítems/módulos en taller.
+              </p>
+            </div>
+
+            <button
+              onClick={() => setIsPrintingKpiModal(true)}
+              className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs transition-colors shadow-sm cursor-pointer"
+            >
+              <Printer className="w-4 h-4" />
+              <span>Imprimir Reporte KPI & Gráficas</span>
+            </button>
+          </div>
+
+          {/* Metric Cards Grid */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
+              <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
+                <Package className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Órdenes Activas</p>
+                <p className="text-xl font-extrabold text-slate-900">{kpiData.totalActiveOrders}</p>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
+              <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+                <Layers className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Ítems / Módulos</p>
+                <p className="text-xl font-extrabold text-slate-900">{kpiData.grandTotalItems}</p>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
+              <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+                <User className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Clientes Activos</p>
+                <p className="text-xl font-extrabold text-slate-900">{kpiData.totalClients}</p>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-3">
+              <div className="p-3 bg-purple-50 text-purple-600 rounded-xl">
+                <FolderOpen className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Proyectos Distintos</p>
+                <p className="text-xl font-extrabold text-slate-900">{kpiData.totalProjectsCount}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Bar Chart: Items por Cliente */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-indigo-600" />
+                  <span>Volumen de Ítems y Módulos por Cliente</span>
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Compara la cantidad total de piezas y órdenes de trabajo por cada cliente.
+                </p>
+              </div>
+              <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">
+                Gráfica Consolidada
+              </span>
+            </div>
+
+            <div className="h-72 w-full pt-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={kpiData.chartDataByClient} margin={{ top: 10, right: 20, left: 0, bottom: 20 }}>
+                  <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} />
+                  <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px', color: '#fff', fontSize: '12px' }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+                  <Bar dataKey="Ítems Total" fill="#4f46e5" radius={[6, 6, 0, 0]} name="Total Ítems / Módulos" />
+                  <Bar dataKey="N° Órdenes" fill="#10b981" radius={[6, 6, 0, 0]} name="N° de Órdenes de Trabajo" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Secondary Charts Row */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Pie Chart: Distribución por Cliente */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+              <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                <PieIcon className="w-4 h-4 text-indigo-600" />
+                <span>Porcentaje de Distribución por Cliente</span>
+              </h3>
+              <div className="h-60 w-full flex items-center justify-center">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={kpiData.pieDataByClient}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={45}
+                      outerRadius={75}
+                      paddingAngle={4}
+                      dataKey="value"
+                      label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                    >
+                      {kpiData.pieDataByClient.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderRadius: '10px', color: '#fff', fontSize: '12px' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Pie Chart: Distribución por Tipo de Pieza */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+              <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                <Wrench className="w-4 h-4 text-indigo-600" />
+                <span>Distribución por Tipo de Contra-pieza</span>
+              </h3>
+              <div className="h-60 w-full flex items-center justify-center">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={kpiData.pieTypesChartData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={45}
+                      outerRadius={75}
+                      paddingAngle={4}
+                      dataKey="value"
+                      label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                    >
+                      {kpiData.pieTypesChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={CHART_COLORS[(index + 3) % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderRadius: '10px', color: '#fff', fontSize: '12px' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          {/* Breakdown Summary Table */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-extrabold text-slate-900">Desglose Detallado por Cliente y Proyectos</h3>
+              <span className="text-xs text-slate-500 font-medium">Totales en tiempo real</span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-600 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
+                    <th className="py-2.5 px-3">Cliente</th>
+                    <th className="py-2.5 px-3">Proyectos Asociados</th>
+                    <th className="py-2.5 px-3 text-center">N° Órdenes</th>
+                    <th className="py-2.5 px-3 text-center">Total Ítems / Módulos</th>
+                    <th className="py-2.5 px-3 text-center">% del Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-800 font-medium">
+                  {kpiData.clientsList.map((client) => {
+                    const share = kpiData.grandTotalItems > 0 ? ((client.totalItems / kpiData.grandTotalItems) * 100).toFixed(1) : '0';
+                    const projectsSummary = Object.values(client.projects)
+                      .map((p) => `${p.project} (${p.itemCount} ítems)`)
+                      .join(', ');
+
+                    return (
+                      <tr key={client.clientName} className="hover:bg-slate-50">
+                        <td className="py-2.5 px-3 font-bold text-slate-900">{client.clientName}</td>
+                        <td className="py-2.5 px-3 text-slate-600">{projectsSummary || 'General'}</td>
+                        <td className="py-2.5 px-3 text-center font-mono font-bold text-indigo-700">{client.orderCount}</td>
+                        <td className="py-2.5 px-3 text-center font-mono font-bold text-emerald-700">{client.totalItems}</td>
+                        <td className="py-2.5 px-3 text-center font-mono">
+                          <span className="inline-block px-2 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded">
+                            {share}%
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-slate-900 text-white font-extrabold text-xs">
+                    <td className="py-3 px-3 uppercase">TOTAL GENERAL</td>
+                    <td className="py-3 px-3 text-slate-300 font-normal">{kpiData.totalProjectsCount} Proyectos activos</td>
+                    <td className="py-3 px-3 text-center font-mono text-indigo-300">{kpiData.totalActiveOrders}</td>
+                    <td className="py-3 px-3 text-center font-mono text-emerald-300">{kpiData.grandTotalItems}</td>
+                    <td className="py-3 px-3 text-center font-mono text-amber-300">100%</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal to Manage Clients (Add, Edit, and Delete Clients) */}
       {isAddingClientModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
           <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <h3 className="text-sm font-bold text-slate-900">Gestionar Clientes (Agregar / Eliminar)</h3>
-              <button onClick={() => setIsAddingClientModal(false)} className="text-slate-400 hover:text-slate-600">
+              <h3 className="text-sm font-bold text-slate-900">Gestionar Clientes (Agregar, Modificar o Eliminar)</h3>
+              <button onClick={() => setIsAddingClientModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -2013,7 +2418,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
                 placeholder="Nombre del nuevo cliente..."
                 value={newClientInput}
                 onChange={(e) => setNewClientInput(e.target.value)}
-                className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900"
+                className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none"
               />
               <button
                 onClick={() => {
@@ -2027,9 +2432,9 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
                       })
                     );
                     setAllClients(Array.from(new Set([...allClients, nameTrimmed])));
-                    setSelectedClient(nameTrimmed);
+                    setFormCliente(nameTrimmed);
                     setNewClientInput('');
-                    showToast(`✓ Cliente '${nameTrimmed}' guardado`);
+                    showToast(`✓ Cliente '${nameTrimmed}' agregado`);
                   }
                 }}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs cursor-pointer transition-colors shrink-0"
@@ -2038,32 +2443,90 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
               </button>
             </div>
 
-            {/* List of existing clients with Delete button */}
-            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+            {/* List of existing clients with Edit and Delete options */}
+            <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Clientes Existentes ({allClients.length}):</p>
-              {allClients.map((clientName) => {
+              {allClients.map((clientName, idx) => {
                 const dbCust = customers.find((c) => c.name.toLowerCase() === clientName.toLowerCase());
+                const isEditingThis = editingClientIdx === idx;
+
                 return (
                   <div key={clientName} className="flex justify-between items-center p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800">
-                    <span>{clientName}</span>
-                    <button
-                      onClick={() => {
-                        if (confirm(`¿Está seguro que desea eliminar al cliente '${clientName}'?`)) {
-                          if (dbCust) {
-                            db.transact(tx.customers[dbCust.id].delete()).catch((err) => {
-                              console.error('Error eliminando cliente:', err);
-                            });
-                          }
-                          setAllClients(allClients.filter((c) => c !== clientName));
-                          if (selectedClient === clientName) setSelectedClient('all');
-                          showToast(`✓ Cliente '${clientName}' eliminado`);
-                        }
-                      }}
-                      className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[11px] font-bold border border-rose-200 flex items-center gap-1 transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                      <span>Quitar</span>
-                    </button>
+                    {isEditingThis ? (
+                      <div className="flex items-center gap-2 flex-1 mr-2">
+                        <input
+                          type="text"
+                          value={editClientNameInput}
+                          onChange={(e) => setEditClientNameInput(e.target.value)}
+                          className="flex-1 px-2 py-1 bg-white border border-indigo-300 rounded-lg text-xs font-bold text-slate-900 focus:outline-none"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => {
+                            const trimmed = editClientNameInput.trim();
+                            if (trimmed && trimmed !== clientName) {
+                              const updatedList = [...allClients];
+                              updatedList[idx] = trimmed;
+                              setAllClients(updatedList);
+                              if (formCliente === clientName) setFormCliente(trimmed);
+                              if (selectedClient === clientName) setSelectedClient(trimmed);
+                              if (dbCust) {
+                                db.transact(tx.customers[dbCust.id].update({ name: trimmed }));
+                              }
+                              showToast(`✓ Cliente actualizado a '${trimmed}'`);
+                            }
+                            setEditingClientIdx(null);
+                          }}
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold cursor-pointer"
+                        >
+                          Guardar
+                        </button>
+                        <button
+                          onClick={() => setEditingClientIdx(null)}
+                          className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-[11px] font-bold cursor-pointer"
+                        >
+                          X
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="font-bold text-slate-800">{clientName}</span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              setEditingClientIdx(idx);
+                              setEditClientNameInput(clientName);
+                            }}
+                            className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[11px] font-bold border border-indigo-200 flex items-center gap-1 cursor-pointer transition-colors"
+                            title="Editar nombre"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                            <span>Editar</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`¿Está seguro que desea eliminar al cliente '${clientName}'?`)) {
+                                if (dbCust) {
+                                  db.transact(tx.customers[dbCust.id].delete()).catch((err) => {
+                                    console.error('Error eliminando cliente:', err);
+                                  });
+                                }
+                                const filtered = allClients.filter((c) => c !== clientName);
+                                setAllClients(filtered);
+                                if (formCliente === clientName) setFormCliente(filtered[0] || 'Lier 213');
+                                if (selectedClient === clientName) setSelectedClient('all');
+                                showToast(`✓ Cliente '${clientName}' eliminado`);
+                              }
+                            }}
+                            className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[11px] font-bold border border-rose-200 flex items-center gap-1 transition-colors cursor-pointer"
+                            title="Eliminar cliente"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Quitar</span>
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 );
               })}
@@ -2072,10 +2535,102 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
             <div className="flex justify-end pt-2 border-t border-slate-100">
               <button
                 onClick={() => setIsAddingClientModal(false)}
-                className="px-4 py-2 bg-slate-900 text-white font-bold rounded-xl text-xs cursor-pointer"
+                className="px-4 py-2 bg-slate-900 text-white font-bold rounded-xl text-xs cursor-pointer hover:bg-slate-800"
               >
                 Cerrar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* KPI Print View Overlay */}
+      {isPrintingKpiModal && (
+        <div className="fixed inset-0 z-50 bg-white overflow-y-auto p-6 md:p-8 space-y-6 text-slate-900">
+          <div className="flex items-center justify-between border-b border-slate-300 pb-4 no-print">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">Impresión de Reporte KPI & Estadísticas</h2>
+              <p className="text-xs text-slate-500">Vista formateada para imprimir o exportar en PDF</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => window.print()}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 cursor-pointer shadow-sm transition-colors"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Imprimir Ahora / PDF</span>
+              </button>
+              <button
+                onClick={() => setIsPrintingKpiModal(false)}
+                className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-6 max-w-4xl mx-auto border border-slate-300 p-8 rounded-2xl bg-white shadow-xs">
+            <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4">
+              <div>
+                <h1 className="text-2xl font-black text-slate-900 tracking-tight">EMDEP — REPORTE KPI & ANÁLISIS</h1>
+                <p className="text-xs text-slate-700 font-bold mt-1">Consolidado por Cliente, Proyecto e Ítems</p>
+              </div>
+              <div className="text-right text-xs text-slate-600">
+                <p className="font-bold text-slate-900">Fecha de Emisión:</p>
+                <p>{new Date().toLocaleDateString('es-NI', { dateStyle: 'full' })}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-4 gap-3 text-center">
+              <div className="p-3 bg-slate-50 border border-slate-300 rounded-xl">
+                <p className="text-[10px] font-bold text-slate-500 uppercase">Órdenes Activas</p>
+                <p className="text-xl font-black text-slate-900">{kpiData.totalActiveOrders}</p>
+              </div>
+              <div className="p-3 bg-slate-50 border border-slate-300 rounded-xl">
+                <p className="text-[10px] font-bold text-slate-500 uppercase">Total Ítems / Módulos</p>
+                <p className="text-xl font-black text-indigo-700">{kpiData.grandTotalItems}</p>
+              </div>
+              <div className="p-3 bg-slate-50 border border-slate-300 rounded-xl">
+                <p className="text-[10px] font-bold text-slate-500 uppercase">Clientes</p>
+                <p className="text-xl font-black text-slate-900">{kpiData.totalClients}</p>
+              </div>
+              <div className="p-3 bg-slate-50 border border-slate-300 rounded-xl">
+                <p className="text-[10px] font-bold text-slate-500 uppercase">Proyectos</p>
+                <p className="text-xl font-black text-slate-900">{kpiData.totalProjectsCount}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="text-sm font-bold text-slate-900 border-b border-slate-300 pb-1 uppercase tracking-wider">Desglose Detallado de Clientes y Proyectos</h3>
+              <table className="w-full text-left text-xs border-collapse border border-slate-300">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-800 font-bold uppercase text-[10px] border-b border-slate-300">
+                    <th className="p-2 border-r border-slate-300">Cliente</th>
+                    <th className="p-2 border-r border-slate-300">Proyectos y Cantidad de Ítems</th>
+                    <th className="p-2 text-center border-r border-slate-300">N° Órdenes</th>
+                    <th className="p-2 text-center border-r border-slate-300">Total Ítems</th>
+                    <th className="p-2 text-center">% Share</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {kpiData.clientsList.map((client) => {
+                    const share = kpiData.grandTotalItems > 0 ? ((client.totalItems / kpiData.grandTotalItems) * 100).toFixed(1) : '0';
+                    const projDetails = Object.values(client.projects)
+                      .map((p) => `${p.project}: ${p.itemCount} ítems`)
+                      .join(' | ');
+
+                    return (
+                      <tr key={client.clientName}>
+                        <td className="p-2 font-bold border-r border-slate-300 text-slate-900">{client.clientName}</td>
+                        <td className="p-2 border-r border-slate-300 text-slate-700">{projDetails || 'General'}</td>
+                        <td className="p-2 text-center font-mono font-bold border-r border-slate-300">{client.orderCount}</td>
+                        <td className="p-2 text-center font-mono font-bold border-r border-slate-300 text-indigo-900">{client.totalItems}</td>
+                        <td className="p-2 text-center font-mono font-bold">{share}%</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
