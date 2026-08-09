@@ -378,7 +378,10 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
           updatedAt: Date.now(),
           itemsJson: finalItemsJson,
         })
-      );
+      ).catch((err) => {
+        console.error('Error actualizando orden en InstantDB:', err);
+        showToast('⚠️ Error al guardar en InstantDB: ' + (err.message || err));
+      });
       setEditingOrderId(null);
       showToast('✓ Orden actualizada en InstantDB');
     } else {
@@ -408,7 +411,10 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
             updatedAt: Date.now(),
             fechaEntrega: formFechaEntrega || existingOrder.fechaEntrega,
           })
-        );
+        ).catch((err) => {
+          console.error('Error agregando componentes a orden en InstantDB:', err);
+          showToast('⚠️ Error al guardar en InstantDB: ' + (err.message || err));
+        });
         showToast(`✓ Componentes agregados a la OT ${formOtNum.trim()} en InstantDB`);
       } else {
         const newId = id();
@@ -433,7 +439,10 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
             itemsJson: finalItemsJson,
             comentariosJson: JSON.stringify([]),
           })
-        );
+        ).catch((err) => {
+          console.error('Error guardando nueva orden en InstantDB:', err);
+          showToast('⚠️ Error al guardar en InstantDB: ' + (err.message || err));
+        });
         showToast(`✓ Orden ${formOtNum.trim()} guardada en InstantDB`);
       }
     }
@@ -751,23 +760,41 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
 
           <div className="flex items-center gap-2">
             {order.carpetaURL && (
-              <button
-                type="button"
-                onClick={() => {
-                  const url = order.carpetaURL.trim();
-                  if (url.startsWith('http://') || url.startsWith('https://')) {
-                    window.open(url, '_blank');
-                  } else {
-                    navigator.clipboard.writeText(url);
-                    showToast('📁 Ruta de carpeta copiada al portapapeles');
+              <a
+                href={
+                  order.carpetaURL.startsWith('http://') || order.carpetaURL.startsWith('https://')
+                    ? order.carpetaURL
+                    : order.carpetaURL.includes(':\\') || order.carpetaURL.includes(':/')
+                    ? `file:///${order.carpetaURL.replace(/\\/g, '/')}`
+                    : order.carpetaURL.startsWith('\\\\')
+                    ? `file:${order.carpetaURL}`
+                    : `https://${order.carpetaURL.replace(/^\\+|^\/+/, '')}`
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const raw = order.carpetaURL.trim();
+                  if (!raw.startsWith('http://') && !raw.startsWith('https://')) {
+                    e.preventDefault();
+                    let targetUrl = raw;
+                    if (raw.includes(':\\') || raw.includes(':/')) {
+                      targetUrl = 'file:///' + raw.replace(/\\/g, '/');
+                    } else if (raw.startsWith('\\\\')) {
+                      targetUrl = 'file:' + raw;
+                    } else {
+                      targetUrl = 'https://' + raw;
+                    }
+                    window.open(targetUrl, '_blank');
                   }
+                  showToast('📂 Abriendo carpeta...');
                 }}
-                className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg text-xs font-bold border border-emerald-200 transition-colors cursor-pointer"
-                title={order.carpetaURL}
+                className="inline-flex items-center gap-1.5 text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-xl text-xs font-extrabold border border-emerald-300 transition-colors cursor-pointer shadow-xs"
+                title={`Abrir carpeta/enlace: ${order.carpetaURL}`}
               >
-                <FolderOpen className="w-3.5 h-3.5" />
-                <span>{order.carpetaURL.startsWith('http') ? 'Abrir Enlace' : 'Copiar Ruta Carpeta'}</span>
-              </button>
+                <FolderOpen className="w-4 h-4 text-emerald-700" />
+                <span>📂 Abrir Carpeta</span>
+              </a>
             )}
 
             <button

@@ -144,7 +144,7 @@ export function registerNewUser(
 
   // Sync to InstantDB so Mario receives it in real time across any device
   try {
-    db.transact([
+    db.transact(
       tx.userAccounts[newUserId].update({
         name: newUser.name,
         email: newUser.email,
@@ -153,8 +153,10 @@ export function registerNewUser(
         role: newUser.role,
         verificationCode: newUser.verificationCode,
         createdAt: newUser.createdAt,
-      }),
-    ]);
+      })
+    ).catch((err) => {
+      console.error('InstantDB user transaction error:', err);
+    });
   } catch (err) {
     console.error('InstantDB user transaction error:', err);
   }
@@ -170,11 +172,13 @@ export function registerNewUser(
  */
 export function updateUserStatus(userId: string, newStatus: UserStatus): void {
   try {
-    db.transact([
+    db.transact(
       tx.userAccounts[userId].update({
         status: newStatus,
-      }),
-    ]);
+      })
+    ).catch((err) => {
+      console.error('Failed to update status in InstantDB', err);
+    });
   } catch (err) {
     console.error('Failed to update status in InstantDB', err);
   }
@@ -194,7 +198,9 @@ export function updateUserStatus(userId: string, newStatus: UserStatus): void {
  */
 export function deleteUserAccount(userId: string): void {
   try {
-    db.transact([tx.userAccounts[userId].delete()]);
+    db.transact(tx.userAccounts[userId].delete()).catch((err) => {
+      console.error('Failed to delete user in InstantDB', err);
+    });
   } catch (err) {
     console.error('Failed to delete user in InstantDB', err);
   }
