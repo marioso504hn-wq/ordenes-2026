@@ -1,0 +1,6 @@
+{
+  "name": "Sistema de Ordenes y Punto de Venta",
+  "description": "Sistema de gestión de órdenes de trabajo (OT) para mecanizado industrial con alerta de fechas de vencimiento, directorio de clientes (Lier, Yasaki, Active), carga masiva desde Excel de 400+ referencias, tipos de pieza dinámicos (Pull, Neumática, Antenas) e impresión de Hojas de Orden formato A4.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
