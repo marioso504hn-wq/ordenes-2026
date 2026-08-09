@@ -6,7 +6,8 @@ import { AuthGate } from './components/AuthGate';
 import { AppIdModal } from './components/AppIdModal';
 import { UserManagementModal } from './components/UserManagementModal';
 import { Order, Customer } from './types';
-import { Loader2, Database, AlertCircle } from 'lucide-react';
+import { Loader2, Database, AlertCircle, Bell, ShieldCheck, UserCheck } from 'lucide-react';
+import { isSuperAdmin, mergeUsersWithDb, updateUserStatus } from './lib/authUtils';
 
 export default function App() {
   const [authenticatedUser, setAuthenticatedUser] = useState<string | null>(() => {
@@ -19,10 +20,16 @@ export default function App() {
   const { isLoading, error, data } = db.useQuery({
     orders: {},
     customers: {},
+    userAccounts: {},
   });
 
   const rawOrders = (data?.orders as Order[]) || [];
   const rawCustomers = (data?.customers as Customer[]) || [];
+  const rawUsers = (data?.userAccounts as any[]) || [];
+
+  const allUsers = mergeUsersWithDb(rawUsers);
+  const pendingUsers = allUsers.filter((u) => u.status === 'pending');
+  const isMario = isSuperAdmin(authenticatedUser);
 
   // Auto-seed initial demo data if database is empty on first load
   useEffect(() => {
@@ -146,7 +153,53 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-4">
+        {/* Real-time Notification Banner for Mario when new users register */}
+        {isMario && pendingUsers.length > 0 && (
+          <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white p-4 rounded-2xl shadow-xl border-2 border-amber-300 animate-pulse flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-white/20 rounded-xl backdrop-blur-xs shrink-0">
+                <Bell className="w-6 h-6 text-yellow-200 animate-bounce" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="bg-white text-orange-900 font-extrabold text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                    NUEVA SOLICITUD
+                  </span>
+                  <h3 className="font-black text-sm tracking-tight text-white">
+                    {pendingUsers.length === 1
+                      ? `🔔 ${pendingUsers[0].name} solicita acceso al sistema`
+                      : `🔔 ¡Hay ${pendingUsers.length} nuevos usuarios solicitando acceso!`}
+                  </h3>
+                </div>
+                <p className="text-xs text-amber-100 mt-0.5 font-medium">
+                  {pendingUsers.map((u) => `${u.name} (${u.email || 'Sin correo'})`).join(' • ')}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {pendingUsers.length === 1 && (
+                <button
+                  onClick={() => {
+                    updateUserStatus(pendingUsers[0].id, 'approved');
+                  }}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <UserCheck className="w-4 h-4" />
+                  <span>Aprobar {pendingUsers[0].name.split(' ')[0]}</span>
+                </button>
+              )}
+              <button
+                onClick={() => setUserAdminModalOpen(true)}
+                className="px-4 py-2 bg-slate-900 hover:bg-black text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5 border border-amber-300/40"
+              >
+                <ShieldCheck className="w-4 h-4 text-amber-400" />
+                <span>Gestionar Solicitudes ({pendingUsers.length})</span>
+              </button>
+            </div>
+          </div>
+        )}
         {/* Loading State */}
         {isLoading && (
           <div className="flex flex-col items-center justify-center py-20">

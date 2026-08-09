@@ -78,10 +78,45 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
   // Search in Buscador Inteligente
   const [intelliSearchQuery, setIntelliSearchQuery] = useState<string>('');
 
-  // Piece types management
-  const [pieceTypes, setPieceTypes] = useState<string[]>(DEFAULT_PIECE_TYPES);
+  // Piece types management with local persistence
+  const [pieceTypes, setPieceTypes] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('emdep_piece_types_v2');
+      return saved ? JSON.parse(saved) : DEFAULT_PIECE_TYPES;
+    } catch {
+      return DEFAULT_PIECE_TYPES;
+    }
+  });
   const [isManagingTypesModal, setIsManagingTypesModal] = useState(false);
   const [newTypeInput, setNewTypeInput] = useState('');
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('emdep_piece_types_v2', JSON.stringify(pieceTypes));
+    } catch {
+      // ignore
+    }
+  }, [pieceTypes]);
+
+  // Folder Opening Modal State
+  const [folderModalPath, setFolderModalPath] = useState<string | null>(null);
+
+  const handleOpenFolder = (rawUrl?: string) => {
+    if (!rawUrl) return;
+    const trimmed = rawUrl.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      window.open(trimmed, '_blank');
+      showToast('🌐 Abriendo enlace web...');
+    } else {
+      try {
+        navigator.clipboard.writeText(trimmed);
+      } catch {
+        // ignore
+      }
+      setFolderModalPath(trimmed);
+      showToast('📋 Ruta de carpeta copiada al portapapeles');
+    }
+  };
 
   // Sidebar form states (Mis Órdenes)
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -91,9 +126,20 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
   const [formProyecto, setFormProyecto] = useState('');
   const [formIngeniero, setFormIngeniero] = useState('');
   const [formDestino, setFormDestino] = useState<DestinoFabricacion>('HN');
-  const [formTipoContrapieza, setFormTipoContrapieza] = useState(DEFAULT_PIECE_TYPES[0]);
+  const [formTipoContrapieza, setFormTipoContrapieza] = useState(pieceTypes[0] || DEFAULT_PIECE_TYPES[0]);
   const [formCarpetaURL, setFormCarpetaURL] = useState('');
   const [formFechaEntrega, setFormFechaEntrega] = useState(''); // YYYY-MM-DDTHH:mm
+
+  // Interactive Sub-Items / Sub-OT List Manager
+  const [formItemList, setFormItemList] = useState<OrderItem[]>([]);
+  const [editingItemIdx, setEditingItemIdx] = useState<number | null>(null);
+
+  const [subRefInput, setSubRefInput] = useState('');
+  const [subTypeInput, setSubTypeInput] = useState('');
+  const [subOtNumInput, setSubOtNumInput] = useState<number>(1);
+  const [subFechaEnvioInput, setSubFechaEnvioInput] = useState('');
+
+  // Bulk fallback textareas
   const [formBulkReferencias, setFormBulkReferencias] = useState('');
   const [formBulkTipos, setFormBulkTipos] = useState('');
   const [formBulkOTE, setFormBulkOTE] = useState<number>(1);
@@ -305,6 +351,62 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
     return isCerrada && matchUser;
   });
 
+  // Item/Sub-OT Manager handlers inside Order Form
+  const handleAddOrUpdateFormItem = () => {
+    if (!subRefInput.trim() && !subTypeInput.trim()) {
+      alert('Por favor ingrese al menos una Referencia o Tipo de Pieza.');
+      return;
+    }
+
+    const itemObj: OrderItem = {
+      id: editingItemIdx !== null ? formItemList[editingItemIdx]?.id || id() : id(),
+      reference: subRefInput.trim() || 'REF-001',
+      pieceType: subTypeInput.trim() || formTipoContrapieza,
+      itemName: subTypeInput.trim() || formTipoContrapieza,
+      quantity: 1,
+      ots: [
+        {
+          otNum: subOtNumInput || 1,
+          fechaEnvio: subFechaEnvioInput || formFechaEntrega || new Date().toISOString(),
+          status: 'activa',
+        },
+      ],
+    };
+
+    if (editingItemIdx !== null) {
+      const updated = [...formItemList];
+      updated[editingItemIdx] = itemObj;
+      setFormItemList(updated);
+      setEditingItemIdx(null);
+    } else {
+      setFormItemList([...formItemList, itemObj]);
+    }
+
+    setSubRefInput('');
+    setSubTypeInput('');
+    setSubOtNumInput(1);
+    setSubFechaEnvioInput('');
+  };
+
+  const handleRemoveFormItem = (index: number) => {
+    setFormItemList(formItemList.filter((_, idx) => idx !== index));
+    if (editingItemIdx === index) {
+      setEditingItemIdx(null);
+      setSubRefInput('');
+      setSubTypeInput('');
+    }
+  };
+
+  const handleStartEditFormItem = (item: OrderItem, index: number) => {
+    setEditingItemIdx(index);
+    setSubRefInput(item.reference || '');
+    setSubTypeInput(item.pieceType || item.itemName || '');
+    if (item.ots && item.ots.length > 0) {
+      setSubOtNumInput(item.ots[0].otNum || 1);
+      setSubFechaEnvioInput(item.ots[0].fechaEnvio ? item.ots[0].fechaEnvio.slice(0, 16) : '');
+    }
+  };
+
   // Handle Form Submission
   const handleSaveOrderForm = (e: React.FormEvent) => {
     e.preventDefault();
@@ -317,7 +419,12 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
     const tipos = formBulkTipos.split('\n').map((l) => l.trim()).filter(Boolean);
 
     // Check for prior comments warning
-    const refsToCheck = refs.length > 0 ? refs : [formOtNum];
+    const refsToCheck = [
+      ...formItemList.map((i) => i.reference).filter(Boolean),
+      ...refs,
+      formOtNum,
+    ];
+
     let foundPriorComments = false;
     orders.forEach((o) => {
       if (o.comentariosJson) {
@@ -335,26 +442,36 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
     });
 
     if (foundPriorComments) {
-      const proceed = confirm('⚠️ ATENCIÓN: Se encontraron comentarios o dudas registradas previamente para una de las referencias ingresadas. ¿Desea continuar con el registro?');
+      const proceed = confirm(
+        '⚠️ ATENCIÓN: Se encontraron comentarios o dudas registradas previamente para una de las referencias ingresadas. ¿Desea continuar con el registro?'
+      );
       if (!proceed) return;
     }
 
     const calculatedDueDate = formFechaEntrega ? new Date(formFechaEntrega).getTime() : Date.now() + 3 * 86400000;
-    const maxItemsCount = Math.max(refs.length, tipos.length);
-    const parsedItems: OrderItem[] = [];
+    const maxBulk = Math.max(refs.length, tipos.length);
+    const bulkItems: OrderItem[] = [];
 
-    if (maxItemsCount > 0) {
-      for (let i = 0; i < maxItemsCount; i++) {
-        parsedItems.push({
-          id: `item-${i + 1}-${Date.now()}`,
+    if (maxBulk > 0) {
+      for (let i = 0; i < maxBulk; i++) {
+        bulkItems.push({
+          id: `item-bulk-${i + 1}-${Date.now()}`,
           reference: refs[i] || `REF-${i + 1}`,
           pieceType: tipos[i] || formTipoContrapieza,
           itemName: tipos[i] || formTipoContrapieza,
           quantity: 1,
-          ots: [{ otNum: formBulkOTE || 1, fechaEnvio: formFechaEntrega || new Date(calculatedDueDate).toISOString(), status: 'activa' }],
+          ots: [
+            {
+              otNum: formBulkOTE || 1,
+              fechaEnvio: formFechaEntrega || new Date(calculatedDueDate).toISOString(),
+              status: 'activa',
+            },
+          ],
         });
       }
     }
+
+    const parsedItems: OrderItem[] = [...formItemList, ...bulkItems];
 
     const finalItemsJson = parsedItems.length > 0 ? JSON.stringify(parsedItems) : '';
     const firstItemName = parsedItems.length > 0 ? parsedItems[0].itemName || 'Pieza Mecanizada' : 'Pieza Mecanizada';
@@ -456,6 +573,10 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
     setFormBulkReferencias('');
     setFormBulkTipos('');
     setFormBulkOTE(1);
+    setFormItemList([]);
+    setEditingItemIdx(null);
+    setSubRefInput('');
+    setSubTypeInput('');
   };
 
   const handleEditOrderClick = (order: Order) => {
@@ -471,6 +592,19 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
     } else if (order.dueDate) {
       setFormFechaEntrega(new Date(order.dueDate).toISOString().slice(0, 16));
     }
+
+    let items: OrderItem[] = [];
+    if (order.itemsJson) {
+      try {
+        items = JSON.parse(order.itemsJson);
+      } catch {
+        items = [];
+      }
+    }
+    setFormItemList(items);
+    setEditingItemIdx(null);
+    setSubRefInput('');
+    setSubTypeInput('');
     setActiveSubTab('mis_ordenes');
     setIsSidebarOpen(true);
   };
@@ -760,41 +894,18 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
 
           <div className="flex items-center gap-2">
             {order.carpetaURL && (
-              <a
-                href={
-                  order.carpetaURL.startsWith('http://') || order.carpetaURL.startsWith('https://')
-                    ? order.carpetaURL
-                    : order.carpetaURL.includes(':\\') || order.carpetaURL.includes(':/')
-                    ? `file:///${order.carpetaURL.replace(/\\/g, '/')}`
-                    : order.carpetaURL.startsWith('\\\\')
-                    ? `file:${order.carpetaURL}`
-                    : `https://${order.carpetaURL.replace(/^\\+|^\/+/, '')}`
-                }
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  const raw = order.carpetaURL.trim();
-                  if (!raw.startsWith('http://') && !raw.startsWith('https://')) {
-                    e.preventDefault();
-                    let targetUrl = raw;
-                    if (raw.includes(':\\') || raw.includes(':/')) {
-                      targetUrl = 'file:///' + raw.replace(/\\/g, '/');
-                    } else if (raw.startsWith('\\\\')) {
-                      targetUrl = 'file:' + raw;
-                    } else {
-                      targetUrl = 'https://' + raw;
-                    }
-                    window.open(targetUrl, '_blank');
-                  }
-                  showToast('📂 Abriendo carpeta...');
+                  handleOpenFolder(order.carpetaURL);
                 }}
                 className="inline-flex items-center gap-1.5 text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-xl text-xs font-extrabold border border-emerald-300 transition-colors cursor-pointer shadow-xs"
                 title={`Abrir carpeta/enlace: ${order.carpetaURL}`}
               >
                 <FolderOpen className="w-4 h-4 text-emerald-700" />
                 <span>📂 Abrir Carpeta</span>
-              </a>
+              </button>
             )}
 
             <button
@@ -1411,9 +1522,127 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
                       />
                     </div>
 
+                    {/* Interactive Sub-Items & OT Editor */}
+                    <div className="pt-3 border-t border-slate-200 space-y-3 bg-indigo-50/50 p-3 rounded-2xl border border-indigo-100">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-black text-indigo-900 uppercase tracking-tight flex items-center gap-1.5">
+                          <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>Componentes & OTs Asignadas ({formItemList.length})</span>
+                        </span>
+                        {editingItemIdx !== null && (
+                          <span className="text-[10px] bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded">
+                            Editando Ítem #{editingItemIdx + 1}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Form inputs for adding an item */}
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Referencia</label>
+                          <input
+                            type="text"
+                            placeholder="Ej: REF-001"
+                            value={subRefInput}
+                            onChange={(e) => setSubRefInput(e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-900"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Tipo de Pieza</label>
+                          <select
+                            value={subTypeInput || formTipoContrapieza}
+                            onChange={(e) => setSubTypeInput(e.target.value)}
+                            className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-900"
+                          >
+                            {pieceTypes.map((t) => (
+                              <option key={t} value={t}>
+                                {t}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Sub-OT #</label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={subOtNumInput}
+                            onChange={(e) => setSubOtNumInput(parseInt(e.target.value) || 1)}
+                            className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-900"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 mb-0.5">Fecha Envío OT</label>
+                          <input
+                            type="datetime-local"
+                            value={subFechaEnvioInput}
+                            onChange={(e) => setSubFechaEnvioInput(e.target.value)}
+                            className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900"
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleAddOrUpdateFormItem}
+                        className="w-full py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{editingItemIdx !== null ? '✓ Actualizar Ítem / OT' : '➕ Añadir Ítem / OT a la Orden'}</span>
+                      </button>
+
+                      {/* List of current items */}
+                      {formItemList.length > 0 && (
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1 pt-1">
+                          {formItemList.map((it, idx) => (
+                            <div
+                              key={idx}
+                              className={`p-2 rounded-xl border text-xs flex items-center justify-between gap-2 transition-all ${
+                                editingItemIdx === idx
+                                  ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-400/30'
+                                  : 'bg-white border-slate-200'
+                              }`}
+                            >
+                              <div className="min-w-0">
+                                <div className="font-mono font-bold text-indigo-900 truncate">
+                                  Ref: {it.reference} — <span className="text-slate-600 font-sans font-normal">{it.pieceType || it.itemName}</span>
+                                </div>
+                                <div className="text-[10px] text-slate-500">
+                                  OT #{it.ots && it.ots[0] ? it.ots[0].otNum : 1}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditFormItem(it, idx)}
+                                  className="p-1 text-indigo-600 hover:bg-indigo-50 rounded cursor-pointer"
+                                  title="Editar"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveFormItem(idx)}
+                                  className="p-1 text-rose-600 hover:bg-rose-50 rounded cursor-pointer"
+                                  title="Eliminar"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
                     <div className="pt-2 border-t border-slate-100 space-y-2">
                       <span className="text-[11px] font-extrabold text-indigo-700 uppercase tracking-wider block">
-                        Carga Rápida de Componentes + OT
+                        Carga Masiva por Texto (Opcional)
                       </span>
 
                       <div>
@@ -1708,45 +1937,86 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
         </div>
       )}
 
-      {/* Modal to add new Client */}
+      {/* Modal to Manage Clients (Add and Remove Clients) */}
       {isAddingClientModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full space-y-4">
-            <h3 className="text-sm font-bold text-slate-900">Agregar Nuevo Cliente</h3>
-            <input
-              type="text"
-              placeholder="Nombre del cliente..."
-              value={newClientInput}
-              onChange={(e) => setNewClientInput(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900"
-            />
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setIsAddingClientModal(false)}
-                className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold"
-              >
-                Cancelar
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h3 className="text-sm font-bold text-slate-900">Gestionar Clientes (Agregar / Eliminar)</h3>
+              <button onClick={() => setIsAddingClientModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-4 h-4" />
               </button>
+            </div>
+
+            {/* Input to add new client */}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Nombre del nuevo cliente..."
+                value={newClientInput}
+                onChange={(e) => setNewClientInput(e.target.value)}
+                className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900"
+              />
               <button
                 onClick={() => {
                   if (newClientInput.trim()) {
+                    const nameTrimmed = newClientInput.trim();
                     const newClientId = id();
                     db.transact(
                       tx.customers[newClientId].update({
-                        name: newClientInput.trim(),
+                        name: nameTrimmed,
                         createdAt: Date.now(),
                       })
                     );
-                    setAllClients(Array.from(new Set([...allClients, newClientInput.trim()])));
-                    setSelectedClient(newClientInput.trim());
+                    setAllClients(Array.from(new Set([...allClients, nameTrimmed])));
+                    setSelectedClient(nameTrimmed);
                     setNewClientInput('');
-                    setIsAddingClientModal(false);
-                    showToast('✓ Cliente guardado en InstantDB');
+                    showToast(`✓ Cliente '${nameTrimmed}' guardado`);
                   }
                 }}
-                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs cursor-pointer transition-colors"
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs cursor-pointer transition-colors shrink-0"
               >
-                Agregar
+                + Agregar
+              </button>
+            </div>
+
+            {/* List of existing clients with Delete button */}
+            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Clientes Existentes ({allClients.length}):</p>
+              {allClients.map((clientName) => {
+                const dbCust = customers.find((c) => c.name.toLowerCase() === clientName.toLowerCase());
+                return (
+                  <div key={clientName} className="flex justify-between items-center p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800">
+                    <span>{clientName}</span>
+                    <button
+                      onClick={() => {
+                        if (confirm(`¿Está seguro que desea eliminar al cliente '${clientName}'?`)) {
+                          if (dbCust) {
+                            db.transact(tx.customers[dbCust.id].delete()).catch((err) => {
+                              console.error('Error eliminando cliente:', err);
+                            });
+                          }
+                          setAllClients(allClients.filter((c) => c !== clientName));
+                          if (selectedClient === clientName) setSelectedClient('all');
+                          showToast(`✓ Cliente '${clientName}' eliminado`);
+                        }
+                      }}
+                      className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[11px] font-bold border border-rose-200 flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>Quitar</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button
+                onClick={() => setIsAddingClientModal(false)}
+                className="px-4 py-2 bg-slate-900 text-white font-bold rounded-xl text-xs cursor-pointer"
+              >
+                Cerrar
               </button>
             </div>
           </div>
@@ -1757,8 +2027,8 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
       {isManagingTypesModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
           <div className="bg-white rounded-2xl shadow-xl p-6 max-w-md w-full space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900">Gestionar Tipos de Pieza</h3>
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h3 className="text-sm font-bold text-slate-900">Gestionar Tipos de Pieza (Agregar / Eliminar)</h3>
               <button onClick={() => setIsManagingTypesModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-4 h-4" />
               </button>
@@ -1767,7 +2037,7 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
             <div className="flex gap-2">
               <input
                 type="text"
-                placeholder="Ej: Pull, Neumática, Antena..."
+                placeholder="Ej: Pull, Neumática, Antena, Torneado..."
                 value={newTypeInput}
                 onChange={(e) => setNewTypeInput(e.target.value)}
                 className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900"
@@ -1775,36 +2045,110 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
               <button
                 onClick={() => {
                   if (newTypeInput.trim() && !pieceTypes.includes(newTypeInput.trim())) {
-                    setPieceTypes([...pieceTypes, newTypeInput.trim()]);
+                    const updated = [...pieceTypes, newTypeInput.trim()];
+                    setPieceTypes(updated);
                     setNewTypeInput('');
+                    showToast('✓ Tipo de pieza agregado');
                   }
                 }}
-                className="px-4 py-2 bg-indigo-600 text-white font-bold rounded-xl text-xs"
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs cursor-pointer"
               >
-                Agregar
+                + Agregar
               </button>
             </div>
 
-            <div className="max-h-48 overflow-y-auto space-y-1">
+            <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1">
               {pieceTypes.map((t) => (
-                <div key={t} className="flex justify-between items-center p-2 bg-slate-50 rounded-lg text-xs font-medium text-slate-800">
+                <div key={t} className="flex justify-between items-center p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800">
                   <span>{t}</span>
                   {pieceTypes.length > 1 && (
                     <button
-                      onClick={() => setPieceTypes(pieceTypes.filter((x) => x !== t))}
-                      className="text-rose-500 hover:text-rose-700 text-xs font-bold"
+                      onClick={() => {
+                        const updated = pieceTypes.filter((x) => x !== t);
+                        setPieceTypes(updated);
+                        showToast('✓ Tipo de pieza eliminado');
+                      }}
+                      className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[11px] font-bold border border-rose-200 flex items-center gap-1 cursor-pointer"
                     >
-                      ×
+                      <Trash2 className="w-3 h-3" />
+                      <span>Quitar</span>
                     </button>
                   )}
                 </div>
               ))}
             </div>
 
-            <div className="flex justify-end">
-              <button onClick={() => setIsManagingTypesModal(false)} className="px-4 py-2 bg-slate-900 text-white font-bold rounded-xl text-xs">
-                Listo
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button onClick={() => setIsManagingTypesModal(false)} className="px-4 py-2 bg-slate-900 text-white font-bold rounded-xl text-xs cursor-pointer">
+                Guardar y Cerrar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Helper Modal for Local File Paths / Folder Links */}
+      {folderModalPath && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-lg w-full space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2 text-slate-900 font-extrabold text-sm">
+                <FolderOpen className="w-5 h-5 text-indigo-600" />
+                <span>Ubicación de Carpeta de Proyecto</span>
+              </div>
+              <button onClick={() => setFolderModalPath(null)} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-slate-900 text-emerald-400 rounded-xl font-mono text-xs break-all shadow-inner select-all">
+              {folderModalPath}
+            </div>
+
+            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-xs text-indigo-900 space-y-1">
+              <p className="font-bold">💡 Para abrir carpetas locales en tu PC:</p>
+              <ol className="list-decimal list-inside space-y-0.5 text-[11px]">
+                <li>Haz clic en <strong>"Copiar Ruta Exacta"</strong> abajo.</li>
+                <li>Presiona <strong>Win + R</strong> en tu teclado (o abre el Explorador de Archivos).</li>
+                <li>Pega la ruta (Ctrl + V) y presiona Enter para ir directo a la carpeta.</li>
+              </ol>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+              <button
+                onClick={() => {
+                  let targetUrl = folderModalPath;
+                  if (folderModalPath.includes(':\\') || folderModalPath.includes(':/')) {
+                    targetUrl = 'file:///' + folderModalPath.replace(/\\/g, '/');
+                  } else if (folderModalPath.startsWith('\\\\')) {
+                    targetUrl = 'file:' + folderModalPath;
+                  } else if (!folderModalPath.startsWith('http')) {
+                    targetUrl = 'https://' + folderModalPath;
+                  }
+                  window.open(targetUrl, '_blank');
+                }}
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>🌐 Intentar Abrir Vía Navegador</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(folderModalPath);
+                    showToast('✓ Ruta de carpeta copiada al portapapeles');
+                  }}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <span>📋 Copiar Ruta Exacta</span>
+                </button>
+                <button
+                  onClick={() => setFolderModalPath(null)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
             </div>
           </div>
         </div>
