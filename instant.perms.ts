@@ -1,33 +1,53 @@
 import type { InstantRules } from "@instantdb/react";
 
 /**
- * InstantDB Permissions definition
- * Configures security rules for entities.
+ * Permissions for InstantDB
+ * Allows full allow read/create/update/delete permissions for orders, customers, inventory, sales, and users.
  */
 const rules = {
-  $users: {
+  $default: {
     allow: {
       $default: "true",
+      view: "true",
+      create: "true",
+      update: "true",
+      delete: "true",
     },
   },
   orders: {
     allow: {
       $default: "true",
-    },
-  },
-  inventory: {
-    allow: {
-      $default: "true",
+      view: "true",
+      create: "true",
+      update: "true",
+      delete: "true",
     },
   },
   customers: {
     allow: {
       $default: "true",
+      view: "true",
+      create: "true",
+      update: "true",
+      delete: "true",
+    },
+  },
+  inventory: {
+    allow: {
+      $default: "true",
+      view: "true",
+      create: "true",
+      update: "true",
+      delete: "true",
     },
   },
   sales: {
     allow: {
       $default: "true",
+      view: "true",
+      create: "true",
+      update: "true",
+      delete: "true",
     },
   },
 } satisfies InstantRules;

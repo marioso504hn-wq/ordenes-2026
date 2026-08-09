@@ -1252,179 +1252,204 @@ export const OrderManagement: React.FC<OrderManagementProps> = ({ orders, custom
 
       {/* SUB-TAB 2: Mis Órdenes (Collapsible Sidebar Form + Cards) */}
       {activeSubTab === 'mis_ordenes' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Form Sidebar */}
-          <div className={`${isSidebarOpen ? 'lg:col-span-5' : 'lg:col-span-1'} transition-all`}>
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-tight flex items-center gap-2">
-                  <Plus className="w-4 h-4 text-indigo-600" />
-                  <span>{editingOrderId ? 'Editar Orden' : 'Registrar Nueva Orden'}</span>
-                </h3>
+        <div className="space-y-4">
+          {/* Top Toggle Action Bar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs gap-3">
+            <button
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className={`px-4 py-2.5 rounded-xl font-bold text-xs transition-all shadow-xs cursor-pointer flex items-center justify-center gap-2 ${
+                isSidebarOpen
+                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+              }`}
+            >
+              <Plus className="w-4 h-4" />
+              <span>{isSidebarOpen ? '◀ Ocultar Menú de Registro' : '➕ Registrar Nueva Orden / Abrir Menú'}</span>
+            </button>
 
-                <button
-                  onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                  className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 cursor-pointer"
-                  title="Ocultar/Mostrar Formulario"
-                >
-                  {isSidebarOpen ? <ArrowLeft className="w-4 h-4" /> : <ArrowRight className="w-4 h-4" />}
-                </button>
-              </div>
-
-              {isSidebarOpen && (
-                <form onSubmit={handleSaveOrderForm} className="space-y-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Código / Número de Orden *</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ej: 2026 HN-3035"
-                      value={formOtNum}
-                      onChange={(e) => setFormOtNum(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Proyecto / Modelo</label>
-                      <input
-                        type="text"
-                        placeholder="Ej: P708"
-                        value={formProyecto}
-                        onChange={(e) => setFormProyecto(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Ingeniero Asignado</label>
-                      <input
-                        type="text"
-                        placeholder="Ej: Rolvin"
-                        value={formIngeniero}
-                        onChange={(e) => setFormIngeniero(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Destino Fabricación</label>
-                      <select
-                        value={formDestino}
-                        onChange={(e) => setFormDestino(e.target.value as DestinoFabricacion)}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900"
-                      >
-                        <option value="HN">🇭🇳 HN</option>
-                        <option value="NI">🇳🇮 NI</option>
-                        <option value="ES">🇪🇸 ES</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Tipo de Contra-pieza</label>
-                      <select
-                        value={formTipoContrapieza}
-                        onChange={(e) => setFormTipoContrapieza(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
-                      >
-                        {pieceTypes.map((t) => (
-                          <option key={t} value={t}>
-                            {t}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Ruta o Enlace de Carpeta (Opcional)</label>
-                    <input
-                      type="text"
-                      placeholder="Ej: C:\Proyectos\P708 o enlace web/OneDrive"
-                      value={formCarpetaURL}
-                      onChange={(e) => setFormCarpetaURL(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Fecha y Hora Límite de Entrega</label>
-                    <input
-                      type="datetime-local"
-                      value={formFechaEntrega}
-                      onChange={(e) => setFormFechaEntrega(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none"
-                    />
-                  </div>
-
-                  <div className="pt-2 border-t border-slate-100 space-y-2">
-                    <span className="text-[11px] font-extrabold text-indigo-700 uppercase tracking-wider block">
-                      Carga Rápida de Componentes + OT
-                    </span>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Referencias (Una por línea)</label>
-                      <textarea
-                        rows={3}
-                        placeholder={`REF-01\nREF-02`}
-                        value={formBulkReferencias}
-                        onChange={(e) => setFormBulkReferencias(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Especificación / Tipo (Una por línea)</label>
-                      <textarea
-                        rows={2}
-                        placeholder={`Especificación 1\nEspecificación 2`}
-                        value={formBulkTipos}
-                        onChange={(e) => setFormBulkTipos(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Número OT</label>
-                      <input
-                        type="number"
-                        min={1}
-                        value={formBulkOTE}
-                        onChange={(e) => setFormBulkOTE(parseInt(e.target.value) || 1)}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900"
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors cursor-pointer mt-2"
-                  >
-                    {editingOrderId ? 'Guardar Cambios' : 'Guardar Orden Completa'}
-                  </button>
-                </form>
+            <div className="text-xs font-semibold text-slate-500 text-center sm:text-right">
+              {isSidebarOpen ? (
+                <span className="text-indigo-600 font-bold">Formulario de registro activo (Modo Edición/Creación)</span>
+              ) : (
+                <span className="text-emerald-700 font-bold">↔ Menú oculto: Barras de órdenes estiradas al 100% de ancho</span>
               )}
             </div>
           </div>
 
-          {/* Right Orders Cards Feed */}
-          <div className={`${isSidebarOpen ? 'lg:col-span-7' : 'lg:col-span-11'} space-y-4`}>
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-tight">
-                Órdenes de {selectedUserFilter === 'all' ? 'Todas las personas' : selectedUserFilter} ({misOrdenesList.length})
-              </h3>
-            </div>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Left Form Sidebar */}
+            {isSidebarOpen && (
+              <div className="lg:col-span-5 transition-all">
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                      <Plus className="w-4 h-4 text-indigo-600" />
+                      <span>{editingOrderId ? 'Editar Orden' : 'Registrar Nueva Orden'}</span>
+                    </h3>
 
-            {misOrdenesList.length === 0 ? (
-              <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center text-xs text-slate-500">
-                No hay órdenes registradas para la persona o cliente seleccionado.
+                    <button
+                      onClick={() => setIsSidebarOpen(false)}
+                      className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 cursor-pointer"
+                      title="Ocultar Formulario"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleSaveOrderForm} className="space-y-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Código / Número de Orden *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ej: 2026 HN-3035"
+                        value={formOtNum}
+                        onChange={(e) => setFormOtNum(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Proyecto / Modelo</label>
+                        <input
+                          type="text"
+                          placeholder="Ej: P708"
+                          value={formProyecto}
+                          onChange={(e) => setFormProyecto(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Ingeniero Asignado</label>
+                        <input
+                          type="text"
+                          placeholder="Ej: Rolvin"
+                          value={formIngeniero}
+                          onChange={(e) => setFormIngeniero(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Destino Fabricación</label>
+                        <select
+                          value={formDestino}
+                          onChange={(e) => setFormDestino(e.target.value as DestinoFabricacion)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900"
+                        >
+                          <option value="HN">🇭🇳 HN</option>
+                          <option value="NI">🇳🇮 NI</option>
+                          <option value="ES">🇪🇸 ES</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Tipo de Contra-pieza</label>
+                        <select
+                          value={formTipoContrapieza}
+                          onChange={(e) => setFormTipoContrapieza(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900"
+                        >
+                          {pieceTypes.map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Ruta o Enlace de Carpeta (Opcional)</label>
+                      <input
+                        type="text"
+                        placeholder="Ej: C:\Proyectos\P708 o enlace web/OneDrive"
+                        value={formCarpetaURL}
+                        onChange={(e) => setFormCarpetaURL(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Fecha y Hora Límite de Entrega</label>
+                      <input
+                        type="datetime-local"
+                        value={formFechaEntrega}
+                        onChange={(e) => setFormFechaEntrega(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 space-y-2">
+                      <span className="text-[11px] font-extrabold text-indigo-700 uppercase tracking-wider block">
+                        Carga Rápida de Componentes + OT
+                      </span>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Referencias (Una por línea)</label>
+                        <textarea
+                          rows={3}
+                          placeholder={`REF-01\nREF-02`}
+                          value={formBulkReferencias}
+                          onChange={(e) => setFormBulkReferencias(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Especificación / Tipo (Una por línea)</label>
+                        <textarea
+                          rows={2}
+                          placeholder={`Especificación 1\nEspecificación 2`}
+                          value={formBulkTipos}
+                          onChange={(e) => setFormBulkTipos(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono text-slate-900 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Número OT</label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={formBulkOTE}
+                          onChange={(e) => setFormBulkOTE(parseInt(e.target.value) || 1)}
+                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900"
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors cursor-pointer mt-2"
+                    >
+                      {editingOrderId ? 'Guardar Cambios' : 'Guardar Orden Completa'}
+                    </button>
+                  </form>
+                </div>
               </div>
-            ) : (
-              <div className="space-y-4">{misOrdenesList.map((order) => renderOrderCard(order))}</div>
             )}
+
+            {/* Right Orders Cards Feed (Stretches to 12 columns when sidebar is closed) */}
+            <div className={`${isSidebarOpen ? 'lg:col-span-7' : 'lg:col-span-12 w-full'} space-y-4`}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-tight">
+                  Órdenes de {selectedUserFilter === 'all' ? 'Todas las personas' : selectedUserFilter} ({misOrdenesList.length})
+                </h3>
+              </div>
+
+              {misOrdenesList.length === 0 ? (
+                <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center text-xs text-slate-500">
+                  No hay órdenes registradas para la persona o cliente seleccionado.
+                </div>
+              ) : (
+                <div className="space-y-4">{misOrdenesList.map((order) => renderOrderCard(order))}</div>
+              )}
+            </div>
           </div>
         </div>
       )}

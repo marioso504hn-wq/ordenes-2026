@@ -1,38 +1,32 @@
 import React, { useState } from 'react';
-import { Wrench, UserPlus, LogIn, Lock, User, ShieldCheck, Mail, CheckCircle } from 'lucide-react';
+import { Wrench, UserPlus, LogIn, Lock, User, ShieldCheck, Mail, CheckCircle, Clock, AlertTriangle, KeyRound, Bell } from 'lucide-react';
+import { getRegisteredUsers, registerNewUser } from '../lib/authUtils';
 
 interface AuthGateProps {
   onAuthenticate: (userName: string) => void;
 }
 
 export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticate }) => {
-  const [isRegisterMode, setIsRegisterMode] = useState(true); // Default to Registration first as requested
+  const [isRegisterMode, setIsRegisterMode] = useState(false); // Default to login or register
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
-
-  // Get registered users from localStorage
-  const getRegisteredUsers = (): Array<{ name: string; email?: string; password?: string }> => {
-    try {
-      const stored = localStorage.getItem('emdep_registered_users');
-      return stored ? JSON.parse(stored) : [
-        { name: 'Gladys', password: '123' },
-        { name: 'Rolvin', password: '123' },
-        { name: 'Mario', password: '123' },
-      ];
-    } catch {
-      return [{ name: 'Gladys', password: '123' }];
-    }
-  };
+  const [pendingNotice, setPendingNotice] = useState<{
+    userName: string;
+    email: string;
+    code: string;
+  } | null>(null);
 
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
+    setPendingNotice(null);
 
-    if (!name.trim()) {
+    const cleanName = name.trim();
+    if (!cleanName) {
       setErrorMsg('Por favor ingrese su nombre de usuario.');
       return;
     }
@@ -42,29 +36,43 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticate }) => {
     }
 
     const users = getRegisteredUsers();
-    const existing = users.find((u) => u.name.toLowerCase() === name.trim().toLowerCase());
+    const existing = users.find((u) => u.name.toLowerCase() === cleanName.toLowerCase());
 
     if (existing) {
-      setErrorMsg(`El usuario "${name.trim()}" ya existe. Por favor inicie sesión.`);
+      setErrorMsg(`El usuario "${cleanName}" ya existe. Por favor inicie sesión.`);
       return;
     }
 
-    const newUser = { name: name.trim(), email: email.trim(), password };
-    const updatedUsers = [...users, newUser];
-    localStorage.setItem('emdep_registered_users', JSON.stringify(updatedUsers));
+    // Special case for Mario master admin
+    if (cleanName.toLowerCase() === 'mario') {
+      if (password !== 'marioso1318') {
+        setErrorMsg('Para registrarse o ingresar como Mario (Administrador), la contraseña maestra debe ser "marioso1318".');
+        return;
+      }
+      registerNewUser(cleanName, email, password);
+      setSuccessMsg('¡Acreditado como Administrador Principal (Mario)! Accediendo...');
+      setTimeout(() => onAuthenticate('Mario'), 600);
+      return;
+    }
 
-    setSuccessMsg(`¡Registro exitoso para ${name.trim()}! Ingresando al sistema...`);
-    setTimeout(() => {
-      onAuthenticate(name.trim());
-    }, 800);
+    // Register normal user -> Requires Mario's Approval!
+    const { user, verificationCode } = registerNewUser(cleanName, email, password);
+
+    setPendingNotice({
+      userName: user.name,
+      email: user.email || `${user.name.toLowerCase()}@emdep.com`,
+      code: verificationCode,
+    });
   };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
+    setPendingNotice(null);
 
-    if (!name.trim()) {
+    const cleanName = name.trim();
+    if (!cleanName) {
       setErrorMsg('Por favor ingrese su nombre de usuario.');
       return;
     }
@@ -73,16 +81,39 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticate }) => {
       return;
     }
 
+    // Direct Super Admin Check for Mario
+    if (cleanName.toLowerCase() === 'mario') {
+      if (password === 'marioso1318') {
+        setSuccessMsg('¡Bienvenido Administrador Principal (Mario)!');
+        setTimeout(() => onAuthenticate('Mario'), 600);
+        return;
+      } else {
+        setErrorMsg('Contraseña incorrecta para Mario Administrador.');
+        return;
+      }
+    }
+
     const users = getRegisteredUsers();
-    const found = users.find((u) => u.name.toLowerCase() === name.trim().toLowerCase());
+    const found = users.find((u) => u.name.toLowerCase() === cleanName.toLowerCase());
 
     if (!found) {
-      setErrorMsg('Usuario no encontrado. Por favor regístrese primero.');
+      setErrorMsg('Usuario no encontrado en el registro. Por favor regístrese primero.');
       return;
     }
 
     if (found.password && found.password !== password) {
-      setErrorMsg('Contraseña incorrecta. Inténtalo de nuevo.');
+      setErrorMsg('Contraseña incorrecta. Inténtelo de nuevo.');
+      return;
+    }
+
+    // CHECK APPROVAL STATUS
+    if (found.status === 'pending') {
+      setErrorMsg(`🔒 Tu cuenta "${found.name}" está PENDIENTE DE APROBACIÓN por el administrador Mario. Pídele a Mario que autorice tu acceso en la plataforma.`);
+      return;
+    }
+
+    if (found.status === 'rejected') {
+      setErrorMsg(`❌ Tu solicitud de acceso fue rechazada por el administrador Mario.`);
       return;
     }
 
@@ -93,175 +124,227 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticate }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950 flex items-center justify-center p-4 selection:bg-indigo-500 selection:text-white">
+    <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 selection:bg-indigo-500 selection:text-white">
       <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full p-8 relative overflow-hidden space-y-6">
         {/* Brand Header */}
         <div className="text-center space-y-2">
-          <div className="inline-flex p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-600/30 mb-2">
+          <div className="inline-flex p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-600/30 mb-1">
             <Wrench className="w-8 h-8" />
           </div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight uppercase">EMDEP</h1>
           <p className="text-xs font-semibold text-slate-500">
-            Sistema de Gestión de Órdenes e Ingeniería Industrial
+            Sistema de Gestión de Órdenes e Ingeniería
           </p>
+          <div className="inline-block bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
+            🛡️ Aprobación Requerida por Administrador Mario
+          </div>
         </div>
 
-        {/* Tab switcher: Registration FIRST, then Login */}
+        {/* Tab switcher */}
         <div className="grid grid-cols-2 bg-slate-100 p-1 rounded-2xl text-xs font-bold">
-          <button
-            type="button"
-            onClick={() => {
-              setIsRegisterMode(true);
-              setErrorMsg('');
-              setSuccessMsg('');
-            }}
-            className={`py-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-              isRegisterMode ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <UserPlus className="w-3.5 h-3.5" />
-            <span>1. Registrarse</span>
-          </button>
-
           <button
             type="button"
             onClick={() => {
               setIsRegisterMode(false);
               setErrorMsg('');
               setSuccessMsg('');
+              setPendingNotice(null);
             }}
             className={`py-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
               !isRegisterMode ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <LogIn className="w-3.5 h-3.5" />
-            <span>2. Ingresar</span>
+            <span>Iniciar Sesión</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setIsRegisterMode(true);
+              setErrorMsg('');
+              setSuccessMsg('');
+              setPendingNotice(null);
+            }}
+            className={`py-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              isRegisterMode ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>Registrarse</span>
           </button>
         </div>
 
         {/* Alert Notifications */}
         {errorMsg && (
-          <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold rounded-xl text-center">
-            {errorMsg}
+          <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold rounded-2xl text-center space-y-1">
+            <div className="flex items-center justify-center gap-1 text-rose-600 font-bold">
+              <AlertTriangle className="w-4 h-4" />
+              <span>Acceso Denegado / Pendiente</span>
+            </div>
+            <p>{errorMsg}</p>
           </div>
         )}
 
         {successMsg && (
-          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-xl text-center flex items-center justify-center gap-2">
+          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-2xl text-center flex items-center justify-center gap-2">
             <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>{successMsg}</span>
           </div>
         )}
 
-        {/* Form */}
-        {isRegisterMode ? (
-          <form onSubmit={handleRegister} className="space-y-4">
-            <div>
-              <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">
-                Nombre de Usuario / Ingeniero *
-              </label>
-              <div className="relative">
-                <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej: Gladys, Rolvin, Mario..."
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                />
+        {/* Pending Notice Modal Card */}
+        {pendingNotice && (
+          <div className="p-4 bg-amber-50 border-2 border-amber-300 text-amber-900 text-xs rounded-2xl space-y-3">
+            <div className="flex items-center gap-2 font-black text-amber-900 uppercase">
+              <Clock className="w-4 h-4 text-amber-600 shrink-0 animate-spin" />
+              <span>Solicitud Enviada a Mario</span>
+            </div>
+
+            <div className="bg-white p-3 rounded-xl border border-amber-200 space-y-1 font-mono text-[11px]">
+              <div><strong className="text-slate-600">Usuario:</strong> {pendingNotice.userName}</div>
+              <div><strong className="text-slate-600">Correo:</strong> {pendingNotice.email}</div>
+              <div className="pt-1 text-indigo-900 font-bold flex items-center gap-1">
+                <KeyRound className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Código Verificación:</span>
+                <span className="bg-indigo-100 text-indigo-900 px-2 py-0.5 rounded text-xs tracking-widest">{pendingNotice.code}</span>
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">
-                Correo Electrónico (Opcional)
-              </label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                <input
-                  type="email"
-                  placeholder="ejemplo@empresa.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">
-                Contraseña de Acceso *
-              </label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                <input
-                  type="password"
-                  required
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                />
-              </div>
+            <div className="flex items-start gap-1.5 text-[11px] text-amber-800">
+              <Bell className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>
+                Se ha enviado una notificación de aprobación al Administrador <strong>Mario</strong>. Tan pronto Mario apruebe tu cuenta, podrás ingresar.
+              </span>
             </div>
 
             <button
-              type="submit"
-              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-indigo-600/20 cursor-pointer flex items-center justify-center gap-2"
+              type="button"
+              onClick={() => {
+                setPendingNotice(null);
+                setIsRegisterMode(false);
+              }}
+              className="w-full py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs cursor-pointer"
             >
-              <ShieldCheck className="w-4 h-4" />
-              <span>Registrarme e Ingresar</span>
+              Entendido, Ir a Iniciar Sesión
             </button>
-          </form>
-        ) : (
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">
-                Nombre de Usuario *
-              </label>
-              <div className="relative">
-                <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                <input
-                  type="text"
-                  required
-                  placeholder="Tu nombre de usuario"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">
-                Contraseña *
-              </label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                <input
-                  type="password"
-                  required
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-indigo-600/20 cursor-pointer flex items-center justify-center gap-2"
-            >
-              <LogIn className="w-4 h-4" />
-              <span>Iniciar Sesión</span>
-            </button>
-          </form>
+          </div>
         )}
 
-        <div className="pt-4 border-t border-slate-100 text-center text-[11px] text-slate-400 font-medium">
-          🔒 Acceso restringido. Registre su usuario para acceder al sistema EMDEP.
+        {/* Form */}
+        {!pendingNotice && (
+          <>
+            {isRegisterMode ? (
+              <form onSubmit={handleRegister} className="space-y-3.5">
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">
+                    Nombre de Usuario / Ingeniero *
+                  </label>
+                  <div className="relative">
+                    <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej: Carlos, Juan, Mario..."
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">
+                    Correo Electrónico (Para recibir código)
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type="email"
+                      placeholder="usuario@empresa.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">
+                    Contraseña *
+                  </label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type="password"
+                      required
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-indigo-600/20 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Enviar Solicitud de Registro</span>
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleLogin} className="space-y-3.5">
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">
+                    Nombre de Usuario *
+                  </label>
+                  <div className="relative">
+                    <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej: Mario, Gladys, Rolvin..."
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">
+                    Contraseña *
+                  </label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type="password"
+                      required
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm rounded-xl transition-all shadow-md shadow-indigo-600/20 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <LogIn className="w-4 h-4" />
+                  <span>Ingresar al Sistema</span>
+                </button>
+              </form>
+            )}
+          </>
+        )}
+
+        <div className="pt-3 border-t border-slate-100 text-center text-[11px] text-slate-400 font-medium space-y-1">
+          <div>🔑 Administrador Principal: <strong>Mario</strong> (Clave: marioso1318)</div>
+          <div>🛡️ Todos los usuarios nuevos deben ser aprobados por Mario.</div>
         </div>
       </div>
     </div>

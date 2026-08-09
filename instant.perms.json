@@ -1,0 +1,43 @@
+{
+  "$default": {
+    "allow": {
+      "$default": "true",
+      "view": "true",
+      "create": "true",
+      "update": "true",
+      "delete": "true"
+    }
+  },
+  "orders": {
+    "allow": {
+      "view": "true",
+      "create": "true",
+      "update": "true",
+      "delete": "true"
+    }
+  },
+  "customers": {
+    "allow": {
+      "view": "true",
+      "create": "true",
+      "update": "true",
+      "delete": "true"
+    }
+  },
+  "inventory": {
+    "allow": {
+      "view": "true",
+      "create": "true",
+      "update": "true",
+      "delete": "true"
+    }
+  },
+  "sales": {
+    "allow": {
+      "view": "true",
+      "create": "true",
+      "update": "true",
+      "delete": "true"
+    }
+  }
+}

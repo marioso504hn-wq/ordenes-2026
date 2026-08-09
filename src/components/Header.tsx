@@ -1,10 +1,12 @@
 import React from 'react';
-import { Database, User, Wrench, LogOut } from 'lucide-react';
+import { Database, User, Wrench, LogOut, ShieldCheck } from 'lucide-react';
+import { isSuperAdmin } from '../lib/authUtils';
 
 interface HeaderProps {
   currentUser: string | null;
   onLogout: () => void;
   onOpenAppIdModal: () => void;
+  onOpenUserAdminModal?: () => void;
   pendingOrdersCount: number;
 }
 
@@ -12,8 +14,11 @@ export const Header: React.FC<HeaderProps> = ({
   currentUser,
   onLogout,
   onOpenAppIdModal,
+  onOpenUserAdminModal,
   pendingOrdersCount,
 }) => {
+  const isAdmin = isSuperAdmin(currentUser);
+
   return (
     <header className="bg-slate-900 text-white sticky top-0 z-40 border-b border-slate-800 shadow-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -37,12 +42,24 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* User profile & Action buttons */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             {pendingOrdersCount > 0 && (
               <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold">
                 <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
                 <span>{pendingOrdersCount} OTs Activas</span>
               </div>
+            )}
+
+            {/* Mario Admin Panel Button */}
+            {isAdmin && onOpenUserAdminModal && (
+              <button
+                onClick={onOpenUserAdminModal}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-extrabold transition-colors cursor-pointer animate-pulse"
+                title="Aprobar nuevos usuarios y eliminar cuentas"
+              >
+                <ShieldCheck className="w-4 h-4 text-amber-400" />
+                <span>Panel Mario (Aprobar Usuarios)</span>
+              </button>
             )}
 
             <button

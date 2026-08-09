@@ -1,5 +1,18 @@
 export type OrderStatus = 'pending' | 'in_progress' | 'completed' | 'delivered' | 'activa' | 'finalizada';
 
+export type UserStatus = 'approved' | 'pending' | 'rejected';
+
+export interface UserAccount {
+  id: string;
+  name: string;
+  email?: string;
+  password?: string;
+  status: UserStatus;
+  verificationCode?: string;
+  createdAt: number;
+  role?: 'admin' | 'user';
+}
+
 export type DestinoFabricacion = 'HN' | 'NI' | 'ES';
 
 export interface OTSubItem {

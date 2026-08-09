@@ -4,6 +4,7 @@ import { Header } from './components/Header';
 import { OrderManagement } from './components/OrderManagement';
 import { AuthGate } from './components/AuthGate';
 import { AppIdModal } from './components/AppIdModal';
+import { UserManagementModal } from './components/UserManagementModal';
 import { Order, Customer } from './types';
 import { Loader2, Database, AlertCircle } from 'lucide-react';
 
@@ -12,6 +13,7 @@ export default function App() {
     return sessionStorage.getItem('emdep_active_user') || null;
   });
   const [appIdModalOpen, setAppIdModalOpen] = useState(false);
+  const [userAdminModalOpen, setUserAdminModalOpen] = useState(false);
 
   // InstantDB Query to read all real-time collections
   const { isLoading, error, data } = db.useQuery({
@@ -127,7 +129,7 @@ export default function App() {
     sessionStorage.removeItem('emdep_active_user');
   };
 
-  // IF NOT AUTHENTICATED: Show AuthGate Screen FIRST (Mandatory Registration/Login)
+  // IF NOT AUTHENTICATED: Show AuthGate Screen FIRST (Mandatory Registration/Login with Admin Approval)
   if (!authenticatedUser) {
     return <AuthGate onAuthenticate={handleAuthenticate} />;
   }
@@ -140,6 +142,7 @@ export default function App() {
         onLogout={handleLogout}
         pendingOrdersCount={pendingOrdersCount}
         onOpenAppIdModal={() => setAppIdModalOpen(true)}
+        onOpenUserAdminModal={() => setUserAdminModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -194,6 +197,13 @@ export default function App() {
 
       {/* InstantDB App ID Modal */}
       <AppIdModal isOpen={appIdModalOpen} onClose={() => setAppIdModalOpen(false)} />
+
+      {/* Super Admin User Management Modal (For Mario) */}
+      <UserManagementModal
+        isOpen={userAdminModalOpen}
+        onClose={() => setUserAdminModalOpen(false)}
+        currentUser={authenticatedUser}
+      />
     </div>
   );
 }
