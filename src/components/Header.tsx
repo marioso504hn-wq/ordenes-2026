@@ -1,6 +1,7 @@
 import React from 'react';
-import { Database, User, Wrench, LogOut, ShieldCheck } from 'lucide-react';
-import { isSuperAdmin } from '../lib/authUtils';
+import { Database, User, Wrench, LogOut, ShieldCheck, UserPlus } from 'lucide-react';
+import { isSuperAdmin, mergeUsersWithDb } from '../lib/authUtils';
+import { db } from '../lib/instant';
 
 interface HeaderProps {
   currentUser: string | null;
@@ -18,6 +19,15 @@ export const Header: React.FC<HeaderProps> = ({
   pendingOrdersCount,
 }) => {
   const isAdmin = isSuperAdmin(currentUser);
+
+  // Realtime check for pending user registration requests for Super Admin Mario
+  const { data } = db.useQuery({
+    userAccounts: {},
+  });
+
+  const rawDbUsers = (data?.userAccounts as any[]) || [];
+  const allUsers = mergeUsersWithDb(rawDbUsers);
+  const pendingUsersCount = allUsers.filter((u) => u.status === 'pending').length;
 
   return (
     <header className="bg-slate-900 text-white sticky top-0 z-40 border-b border-slate-800 shadow-md">
@@ -44,21 +54,35 @@ export const Header: React.FC<HeaderProps> = ({
           {/* User profile & Action buttons */}
           <div className="flex items-center gap-2 sm:gap-3">
             {pendingOrdersCount > 0 && (
-              <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold">
+              <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-bold">
                 <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
                 <span>{pendingOrdersCount} OTs Activas</span>
               </div>
             )}
 
-            {/* Mario Admin Panel Button */}
+            {/* Mario Admin Panel Button with Realtime Notification Badge */}
             {isAdmin && onOpenUserAdminModal && (
               <button
                 onClick={onOpenUserAdminModal}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-extrabold transition-colors cursor-pointer animate-pulse"
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
+                  pendingUsersCount > 0
+                    ? 'bg-amber-500 text-slate-950 border-2 border-amber-300 shadow-lg shadow-amber-500/30 animate-pulse'
+                    : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40'
+                }`}
                 title="Aprobar nuevos usuarios y eliminar cuentas"
               >
-                <ShieldCheck className="w-4 h-4 text-amber-400" />
-                <span>Panel Mario (Aprobar Usuarios)</span>
+                <ShieldCheck className={`w-4 h-4 ${pendingUsersCount > 0 ? 'text-slate-950' : 'text-amber-400'}`} />
+                <span>Panel Mario</span>
+                {pendingUsersCount > 0 ? (
+                  <span className="bg-rose-600 text-white font-black text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <UserPlus className="w-3 h-3" />
+                    <span>{pendingUsersCount} Solicitud{pendingUsersCount > 1 ? 'es' : ''}</span>
+                  </span>
+                ) : (
+                  <span className="text-[10px] bg-slate-800 text-amber-300 px-1.5 py-0.5 rounded font-mono">
+                    0 Solicitudes
+                  </span>
+                )}
               </button>
             )}
 

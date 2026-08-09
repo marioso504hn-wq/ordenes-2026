@@ -58,6 +58,15 @@ const _schema = i.schema({
       createdAt: i.number(),
       itemsJson: i.string(), // JSON string of sold items
     }),
+    userAccounts: i.entity({
+      name: i.string(),
+      email: i.string(),
+      password: i.string(),
+      status: i.string(), // 'approved' | 'pending' | 'rejected'
+      verificationCode: i.string(),
+      createdAt: i.number(),
+      role: i.string(), // 'admin' | 'user'
+    }),
   },
 });
 

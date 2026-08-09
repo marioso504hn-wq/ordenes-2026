@@ -39,5 +39,13 @@
       "update": "true",
       "delete": "true"
     }
+  },
+  "userAccounts": {
+    "allow": {
+      "view": "true",
+      "create": "true",
+      "update": "true",
+      "delete": "true"
+    }
   }
 }

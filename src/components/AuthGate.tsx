@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { Wrench, UserPlus, LogIn, Lock, User, ShieldCheck, Mail, CheckCircle, Clock, AlertTriangle, KeyRound, Bell } from 'lucide-react';
-import { getRegisteredUsers, registerNewUser } from '../lib/authUtils';
+import { mergeUsersWithDb, registerNewUser } from '../lib/authUtils';
+import { db } from '../lib/instant';
 
 interface AuthGateProps {
   onAuthenticate: (userName: string) => void;
 }
 
 export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticate }) => {
-  const [isRegisterMode, setIsRegisterMode] = useState(false); // Default to login or register
+  const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -18,6 +19,14 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticate }) => {
     email: string;
     code: string;
   } | null>(null);
+
+  // Real-time query to InstantDB userAccounts
+  const { data } = db.useQuery({
+    userAccounts: {},
+  });
+
+  const rawDbUsers = (data?.userAccounts as any[]) || [];
+  const allUsers = mergeUsersWithDb(rawDbUsers);
 
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,18 +44,17 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticate }) => {
       return;
     }
 
-    const users = getRegisteredUsers();
-    const existing = users.find((u) => u.name.toLowerCase() === cleanName.toLowerCase());
+    const existing = allUsers.find((u) => u.name.toLowerCase() === cleanName.toLowerCase());
 
     if (existing) {
-      setErrorMsg(`El usuario "${cleanName}" ya existe. Por favor inicie sesión.`);
+      setErrorMsg(`El usuario "${cleanName}" ya existe en el sistema. Por favor inicie sesión.`);
       return;
     }
 
     // Special case for Mario master admin
     if (cleanName.toLowerCase() === 'mario') {
       if (password !== 'marioso1318') {
-        setErrorMsg('Para registrarse o ingresar como Mario (Administrador), la contraseña maestra debe ser "marioso1318".');
+        setErrorMsg('Para registrarse o ingresar como Mario (Administrador), la contraseña maestra es "marioso1318".');
         return;
       }
       registerNewUser(cleanName, email, password);
@@ -55,7 +63,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticate }) => {
       return;
     }
 
-    // Register normal user -> Requires Mario's Approval!
+    // Register normal user -> Writes to InstantDB in real-time so Mario receives notification
     const { user, verificationCode } = registerNewUser(cleanName, email, password);
 
     setPendingNotice({
@@ -93,8 +101,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticate }) => {
       }
     }
 
-    const users = getRegisteredUsers();
-    const found = users.find((u) => u.name.toLowerCase() === cleanName.toLowerCase());
+    const found = allUsers.find((u) => u.name.toLowerCase() === cleanName.toLowerCase());
 
     if (!found) {
       setErrorMsg('Usuario no encontrado en el registro. Por favor regístrese primero.');
@@ -108,7 +115,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticate }) => {
 
     // CHECK APPROVAL STATUS
     if (found.status === 'pending') {
-      setErrorMsg(`🔒 Tu cuenta "${found.name}" está PENDIENTE DE APROBACIÓN por el administrador Mario. Pídele a Mario que autorice tu acceso en la plataforma.`);
+      setErrorMsg(`🔒 Tu cuenta "${found.name}" está PENDIENTE DE APROBACIÓN por el administrador Mario. Mario debe autorizar tu acceso en la plataforma.`);
       return;
     }
 
@@ -198,7 +205,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticate }) => {
           <div className="p-4 bg-amber-50 border-2 border-amber-300 text-amber-900 text-xs rounded-2xl space-y-3">
             <div className="flex items-center gap-2 font-black text-amber-900 uppercase">
               <Clock className="w-4 h-4 text-amber-600 shrink-0 animate-spin" />
-              <span>Solicitud Enviada a Mario</span>
+              <span>Solicitud Enviada en Tiempo Real a Mario</span>
             </div>
 
             <div className="bg-white p-3 rounded-xl border border-amber-200 space-y-1 font-mono text-[11px]">
@@ -206,7 +213,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticate }) => {
               <div><strong className="text-slate-600">Correo:</strong> {pendingNotice.email}</div>
               <div className="pt-1 text-indigo-900 font-bold flex items-center gap-1">
                 <KeyRound className="w-3.5 h-3.5 text-indigo-600" />
-                <span>Código Verificación:</span>
+                <span>Código de Notificación:</span>
                 <span className="bg-indigo-100 text-indigo-900 px-2 py-0.5 rounded text-xs tracking-widest">{pendingNotice.code}</span>
               </div>
             </div>
@@ -214,7 +221,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticate }) => {
             <div className="flex items-start gap-1.5 text-[11px] text-amber-800">
               <Bell className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <span>
-                Se ha enviado una notificación de aprobación al Administrador <strong>Mario</strong>. Tan pronto Mario apruebe tu cuenta, podrás ingresar.
+                Se ha enviado la notificación en tiempo real a la pantalla del Administrador <strong>Mario</strong>. Tan pronto Mario apruebe tu cuenta, podrás ingresar.
               </span>
             </div>
 
@@ -245,7 +252,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticate }) => {
                     <input
                       type="text"
                       required
-                      placeholder="Ej: Carlos, Juan, Mario..."
+                      placeholder="Ej: Carlos, Juan, Pedro..."
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
@@ -255,7 +262,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticate }) => {
 
                 <div>
                   <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">
-                    Correo Electrónico (Para recibir código)
+                    Correo Electrónico (Para recibir notificaciones)
                   </label>
                   <div className="relative">
                     <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -344,7 +351,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onAuthenticate }) => {
 
         <div className="pt-3 border-t border-slate-100 text-center text-[11px] text-slate-400 font-medium space-y-1">
           <div>🔑 Administrador Principal: <strong>Mario</strong> (Clave: marioso1318)</div>
-          <div>🛡️ Todos los usuarios nuevos deben ser aprobados por Mario.</div>
+          <div>🛡️ Aprobación requerida por Mario para nuevos registros.</div>
         </div>
       </div>
     </div>

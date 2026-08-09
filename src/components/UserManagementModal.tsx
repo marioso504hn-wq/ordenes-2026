@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { X, ShieldCheck, UserCheck, UserX, Trash2, CheckCircle2, Clock, Mail, KeyRound, AlertTriangle } from 'lucide-react';
 import { UserAccount } from '../types';
-import { getRegisteredUsers, updateUserStatus, deleteUserAccount } from '../lib/authUtils';
+import { mergeUsersWithDb, updateUserStatus, deleteUserAccount } from '../lib/authUtils';
+import { db } from '../lib/instant';
 
 interface UserManagementModalProps {
   isOpen: boolean;
@@ -14,39 +15,33 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
   onClose,
   currentUser,
 }) => {
-  const [users, setUsers] = useState<UserAccount[]>([]);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [userToDelete, setUserToDelete] = useState<UserAccount | null>(null);
 
-  const refreshUsers = () => {
-    setUsers(getRegisteredUsers());
-  };
-
-  useEffect(() => {
-    if (isOpen) {
-      refreshUsers();
-    }
-  }, [isOpen]);
-
-  const showToast = (msg: string) => {
-    setToastMsg(msg);
-    setTimeout(() => setToastMsg(null), 3000);
-  };
+  // Real-time InstantDB query for instant synchronization across browsers
+  const { data } = db.useQuery({
+    userAccounts: {},
+  });
 
   if (!isOpen) return null;
 
+  const rawDbUsers = (data?.userAccounts as any[]) || [];
+  const users = mergeUsersWithDb(rawDbUsers);
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 3500);
+  };
+
   const pendingUsers = users.filter((u) => u.status === 'pending');
-  const otherUsers = users.filter((u) => u.status !== 'pending');
 
   const handleApprove = (u: UserAccount) => {
     updateUserStatus(u.id, 'approved');
-    refreshUsers();
-    showToast(`✓ Usuario "${u.name}" aprobado exitosamente.`);
+    showToast(`✓ Usuario "${u.name}" APROBADO EXITOSAMENTE. Ahora puede iniciar sesión.`);
   };
 
   const handleReject = (u: UserAccount) => {
     updateUserStatus(u.id, 'rejected');
-    refreshUsers();
     showToast(`✕ Solicitud de "${u.name}" fue rechazada.`);
   };
 
@@ -54,8 +49,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
     if (userToDelete) {
       deleteUserAccount(userToDelete.id);
       setUserToDelete(null);
-      refreshUsers();
-      showToast(`🗑️ Usuario eliminado del sistema.`);
+      showToast(`🗑️ Usuario "${userToDelete.name}" eliminado del sistema.`);
     }
   };
 
@@ -69,11 +63,18 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
               <ShieldCheck className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-lg font-black text-slate-900 tracking-tight uppercase">
-                Panel de Administración • Mario
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-black text-slate-900 tracking-tight uppercase">
+                  Panel de Aprobación • Administrador Mario
+                </h2>
+                {pendingUsers.length > 0 && (
+                  <span className="bg-amber-500 text-white font-extrabold text-[10px] px-2 py-0.5 rounded-full animate-bounce">
+                    {pendingUsers.length} PENDIENTE{pendingUsers.length > 1 ? 'S' : ''}
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-500 font-semibold">
-                Aprobación de usuarios nuevos y gestión de permisos
+                Sincronización en tiempo real de nuevos usuarios y permisos
               </p>
             </div>
           </div>
@@ -88,7 +89,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
 
         {/* Toast Alert */}
         {toastMsg && (
-          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-2xl flex items-center gap-2">
+          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-2xl flex items-center gap-2 animate-fadeIn">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>{toastMsg}</span>
           </div>
@@ -99,30 +100,30 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-extrabold text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-amber-600" />
+                <Clock className="w-4 h-4 text-amber-600 animate-spin" />
                 <span>Solicitudes Pendientes de Aprobación ({pendingUsers.length})</span>
               </h3>
             </div>
 
             {pendingUsers.length === 0 ? (
-              <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-center text-xs text-slate-500">
-                ✅ No hay solicitudes pendientes en este momento.
+              <div className="bg-emerald-50/60 border border-emerald-200 p-4 rounded-2xl text-center text-xs font-bold text-emerald-800">
+                ✅ No hay nuevas solicitudes pendientes en este momento. Todas están al día.
               </div>
             ) : (
               <div className="space-y-2.5">
                 {pendingUsers.map((u) => (
                   <div
                     key={u.id}
-                    className="p-4 bg-amber-50/70 border-2 border-amber-300 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
+                    className="p-4 bg-amber-50/80 border-2 border-amber-300 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs"
                   >
                     <div className="space-y-1">
                       <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
                         <span>👤 {u.name}</span>
-                        <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full uppercase">
-                          Pendiente
+                        <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full uppercase font-black">
+                          Solicitud Nueva
                         </span>
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-slate-600 font-mono">
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 font-mono">
                         <span className="flex items-center gap-1">
                           <Mail className="w-3.5 h-3.5 text-slate-400" />
                           {u.email}
@@ -139,15 +140,15 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                     <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
                       <button
                         onClick={() => handleApprove(u)}
-                        className="flex-1 sm:flex-initial px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1"
+                        className="flex-1 sm:flex-initial px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl transition-all shadow-md shadow-emerald-600/20 cursor-pointer flex items-center justify-center gap-1.5"
                       >
-                        <UserCheck className="w-3.5 h-3.5" />
-                        <span>Aprobar</span>
+                        <UserCheck className="w-4 h-4" />
+                        <span>Aprobar Usuario</span>
                       </button>
 
                       <button
                         onClick={() => handleReject(u)}
-                        className="flex-1 sm:flex-initial px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1"
+                        className="flex-1 sm:flex-initial px-3 py-2 bg-rose-100 hover:bg-rose-200 text-rose-800 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1"
                       >
                         <UserX className="w-3.5 h-3.5" />
                         <span>Rechazar</span>
@@ -163,7 +164,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
           <div className="space-y-3">
             <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
               <ShieldCheck className="w-4 h-4 text-indigo-600" />
-              <span>Usuarios Registrados en el Sistema ({users.length})</span>
+              <span>Todos los Usuarios en el Sistema ({users.length})</span>
             </h3>
 
             <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-2xs">
@@ -186,7 +187,7 @@ export const UserManagementModal: React.FC<UserManagementModalProps> = ({
                           <span>{u.name}</span>
                           {isMario && (
                             <span className="text-[10px] bg-indigo-600 text-white font-bold px-2 py-0.5 rounded-full">
-                              ADMIN
+                              ADMIN PRINCIPAL
                             </span>
                           )}
                         </td>
